@@ -1,7 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// Chaos Radio — Prisma schema (Prisma 7)
+// DATABASE_URL è in prisma7.config.ts, non qui.
 
 generator client {
   provider = "prisma-client"
@@ -10,4 +8,129 @@ generator client {
 
 datasource db {
   provider = "mysql"
+}
+
+// ────────────────────────────────────────────────────────────────
+// User — account autenticato, può avere preferiti
+// ────────────────────────────────────────────────────────────────
+model User {
+  id           Int               @id @default(autoincrement())
+  email        String            @unique
+  passwordHash String            @map("password_hash")
+  displayName  String?           @map("display_name")
+  createdAt    DateTime          @default(now()) @map("created_at")
+
+  favorites    Favorite[]
+  reads        NotificationRead[]
+
+  @@map("users")
+}
+
+// ────────────────────────────────────────────────────────────────
+// Track — singolo brano MP3, metadata estratti da scan script
+// ────────────────────────────────────────────────────────────────
+model Track {
+  id              Int       @id @default(autoincrement())
+  filePath        String    @unique @map("file_path")
+  title           String
+  artist          String
+  year            Int?
+  genres          Json?
+  durationSeconds Int?      @map("duration_seconds")
+  coverPath       String?   @map("cover_path")
+  addedAt         DateTime  @default(now()) @map("added_at")
+
+  favorites       Favorite[]
+  playlistItems   PlaylistItem[]
+
+  @@index([artist])
+  @@index([addedAt])
+  @@map("tracks")
+}
+
+// ────────────────────────────────────────────────────────────────
+// Favorite — relazione N:N tra User e Track
+// ────────────────────────────────────────────────────────────────
+model Favorite {
+  userId    Int
+  trackId   Int
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  track     Track     @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@id([userId, trackId])
+  @@index([userId])
+  @@map("favorites")
+}
+
+// ────────────────────────────────────────────────────────────────
+// Playlist — show list o pirate day, contiene track in ordine
+// ────────────────────────────────────────────────────────────────
+model Playlist {
+  id            Int       @id @default(autoincrement())
+  slug          String    @unique
+  title         String
+  kind          PlaylistKind @default(SHOW)
+  curatorName   String?   @map("curator_name")
+  curatorRole   String?   @map("curator_role")
+  curatorAvatar String?   @map("curator_avatar")
+  curatorLinks  Json?     @map("curator_links")
+  description   String?   @db.Text
+  startsAt      DateTime? @map("starts_at")
+  endsAt        DateTime? @map("ends_at")
+
+  items         PlaylistItem[]
+
+  @@index([kind])
+  @@index([endsAt])
+  @@map("playlists")
+}
+
+model PlaylistItem {
+  playlistId Int
+  trackId    Int
+  position   Int
+
+  playlist   Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  track      Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@id([playlistId, trackId])
+  @@index([playlistId, position])
+  @@map("playlist_items")
+}
+
+// ────────────────────────────────────────────────────────────────
+// Notification — broadcast (userId null) o targeted a un utente
+// ────────────────────────────────────────────────────────────────
+model Notification {
+  id        Int       @id @default(autoincrement())
+  userId    Int?      @map("user_id")
+  body      String    @db.Text
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  reads     NotificationRead[]
+
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model NotificationRead {
+  notificationId Int
+  userId         Int
+  readAt         DateTime @default(now()) @map("read_at")
+
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([notificationId, userId])
+  @@map("notification_reads")
+}
+
+// ────────────────────────────────────────────────────────────────
+// Enums
+// ────────────────────────────────────────────────────────────────
+enum PlaylistKind {
+  SHOW
+  PIRATE_DAY
 }
