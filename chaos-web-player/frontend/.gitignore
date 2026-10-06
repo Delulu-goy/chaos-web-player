@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# Build output
+dist/
+dist-ssr/
+
+# PWA generated assets (handled by plugin, but exclude from lint)
+dev-dist/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/
+*.swp
+.DS_Store

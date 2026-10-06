@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Env file (credenziali)
+.env
+.env.local
+
+# Prisma generated client
+/generated/prisma
+
+# Logs
+logs/
+*.log
+
+# Prisma migrations SQLite dev (se usato)
+/prisma/*.db
+/prisma/*.db-journal
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Agent skill folders (non committati)
+.claude/
+.windsurf/
+.agents/
+.devin/
