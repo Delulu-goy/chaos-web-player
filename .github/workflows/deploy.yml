@@ -1,0 +1,111 @@
+# GitHub Actions — alternative a cPanel auto-deploy
+# Questo workflow esegue build + deploy automatico a Namecheap Stellar via SSH
+# ogni volta che si fa push sul branch main.
+#
+# PREREQUISITI:
+# 1. Abilitare SSH su Stellar (potrebbe richiedere upgrade del piano)
+# 2. Generare SSH key su GitHub (Settings → Secrets → NEW REPOSITORY SECRET):
+#    - SSH_HOST: nome host SSH di Stellar (es. serverXXX.web-hosting.com)
+#    - SSH_USER: username cPanel
+#    - SSH_KEY: chiave privata SSH (contenuto di id_rsa)
+#    - SSH_PORT: 22 (o porta personalizzata)
+#    - DEPLOY_PATH: /home/$SSH_USER/radio.chaosroom.online
+#
+# NOTA: Se SSH non è disponibile (Stellar base potrebbe non averlo),
+# usa cPanel Git Version Control con il .cpanel.yml incluso in questo repo.
+# Vedi deploy/DEPLOY.md per la guida completa.
+
+name: Deploy to Stellar
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # permette trigger manuale
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: chaos-web-player/backend/package-lock.json
+
+      - name: Install backend deps
+        working-directory: chaos-web-player/backend
+        run: npm ci
+
+      - name: Generate Prisma client
+        working-directory: chaos-web-player/backend
+        run: npx prisma generate
+
+      - name: Install frontend deps
+        working-directory: chaos-web-player/frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: chaos-web-player/frontend
+        run: npm run build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: chaos-web-player/frontend/dist/
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Setup SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_KEY }}
+
+      - name: Deploy to Stellar
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST << EOF
+            set -e
+            cd $DEPLOY_PATH
+
+            # Pull latest code
+            git pull origin main
+
+            # Backend
+            cd chaos-web-player/backend
+            npm install --production
+            npx prisma generate
+            npx prisma migrate deploy
+
+            # Frontend (ricevuto come artifact, copialo)
+            cd ..
+            mkdir -p frontend/dist
+            rm -rf frontend/dist/*
+            cp -r ~/actions-runner/_work/chaos-radio/chaos-radio/dist/. frontend/dist/
+
+            # Restart
+            mkdir -p tmp
+            touch tmp/restart.txt
+            echo "Deploy complete"
+          EOF
+
+      - name: Health check
+        run: |
+          sleep 5
+          curl -f https://radio.chaosroom.online/api/health || exit 1
