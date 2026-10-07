@@ -2,16 +2,27 @@
 # Questo file viene letto da cPanel dopo ogni `git pull` per eseguire
 # comandi di build e deploy automatici.
 # Docs: https://docs.cpanel.net/cpanel/files/domains/manage-git-version-control/
+#
+# Layout del server Stellar:
+#   /home/tuouser/radio.chaosroom.online/
+#   ├── .htaccess                    ← config Apache (manuale, NON committato)
+#   ├── tmp/                         ← restart.txt per Passenger
+#   ├── frontend/dist/               ← build Vite (generata qui)
+#   └── repo/                        ← codice sorgente clonato
+#       └── chaos-web-player/
+#           ├── backend/
+#           └── frontend/
 
 ---
 deployment:
   tasks:
-    # Setup paths
+    # Setup paths (adattare tuouser al proprio username cPanel)
     - export DEPLOY_ROOT=/home/$CPANEL_USER/radio.chaosroom.online
+    - export SOURCE_ROOT=$DEPLOY_ROOT/repo/chaos-web-player
     - export FRONTEND_DEPLOY=$DEPLOY_ROOT/frontend
 
     # ── Backend ────────────────────────────────
-    - cd $DEPLOY_ROOT/chaos-web-player/backend
+    - cd $SOURCE_ROOT/backend
     - echo "[deploy] installing backend dependencies..."
     - npm install --production
     - echo "[deploy] generating Prisma client..."
@@ -19,11 +30,11 @@ deployment:
     - echo "[deploy] running migrations..."
     - npx prisma migrate deploy
     - echo "[deploy] ensuring private dirs exist..."
-    - mkdir -p $DEPLOY_ROOT/chaos-web-player/backend/private/audio
-    - mkdir -p $DEPLOY_ROOT/chaos-web-player/backend/private/covers
+    - mkdir -p $SOURCE_ROOT/backend/private/audio
+    - mkdir -p $SOURCE_ROOT/backend/private/covers
 
     # ── Frontend ───────────────────────────────
-    - cd $DEPLOY_ROOT/chaos-web-player/frontend
+    - cd $SOURCE_ROOT/frontend
     - echo "[deploy] installing frontend dependencies..."
     - npm install
     - echo "[deploy] building frontend..."

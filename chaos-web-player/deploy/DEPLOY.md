@@ -124,16 +124,18 @@ git push -u origin main
 
 ## STEP 5 — Clona il repo in cPanel (Git Version Control)
 
+> ⚠️ **Se il path `/home/tuouser/radio.chaosroom.online` contiene già file** (default index.html di Namecheap, .well-known, cgi-bin), usa il **path alternativo** `/home/tuouser/radio.chaosroom.online/repo`. Il `.cpanel.yml` è già configurato per questa struttura.
+
 1. cPanel → **Files** → **Git Version Control**
 2. Click **Create**
 3. Compila:
    - **Clone URL**: `https://github.com/TUO-USERNAME/chaos-radio.git`
-   - **Repository path**: `/home/tuouser/radio.chaosroom.online`
-   - **Branch**: `main`
+   - **Repository path**: `/home/tuouser/radio.chaosroom.online/repo` ← **con `/repo` finale**
+   - **Branch**: `master`
    - **Deployment**: lascia vuoto (usa il .cpanel.yml del repo)
 4. Click **Create**
 5. Aspetta che il clone finisca (30-60 secondi)
-6. Verifica in File Manager: `/home/tuouser/radio.chaosroom.online/chaos-web-player/` deve esistere
+6. Verifica in File Manager: `/home/tuouser/radio.chaosroom.online/repo/chaos-web-player/` deve esistere
 
 ## STEP 6 — Trigger primo deploy (esegue .cpanel.yml)
 
