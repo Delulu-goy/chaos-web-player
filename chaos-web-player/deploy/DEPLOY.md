@@ -179,13 +179,19 @@ NODE_ENV=production
 2. Click **Create Application**:
    - **Node.js version**: scegli **22.x** o la più recente disponibile
    - **Application mode**: Production
-   - **Application root**: `radio.chaosroom.online/chaos-web-player/backend`
+   - **Application root**: `radio.chaosroom.online/repo/chaos-web-player/backend` (con `/repo` percorso)
    - **Application URL**: `radio.chaosroom.online`
    - **Application startup file**: `src/index.js`
 3. Click **Create**
-4. Nella card dell'app creata, copia il **Virtual environment** activation command (es. `source /home/tuouser/nodevenv/radio.chaosroom.online/22/bin/activate`)
-5. Click **Run NPM Install**
-6. Click **Restart** per avviare
+4. Nella card dell'app creata, copia il **Virtual environment** activation command (es. `source /home/tuouser/nodevenv/radio.chaosroom.online/22/bin/activate && cd repo/chaos-web-player/backend`)
+5. Click **Run NPM Install** (senza `postinstall` perché Prisma 7 WASM binary può fallire su Stellar)
+
+> **Dopo npm install**, devi eseguire manualmente `prisma generate` dal terminale SSH cPanel (Setup Node.js App → la tua app → **Open Terminal** o **Enter to the virtual environment**):
+> ```bash
+> cd ~/radio.chaosroom.online/repo/chaos-web-player/backend
+> source /home/tuouser/nodevenv/radio.chaosroom.online/22/bin/activate
+> npx prisma generate
+> ```
 
 > **Se Stellar offre solo Node 20 LTS**: `tsx` (già in package.json) compila i `.ts` di Prisma a runtime. Funziona out-of-the-box.
 
