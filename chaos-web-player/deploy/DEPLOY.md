@@ -4,7 +4,7 @@
 **Versione**: MVP iniziale (Fase 0-4, 5.1, 5.2 completate; 5.3-5.5 differite; Fase 2 saltata)
 **Target**: subdomain `radio.chaosroom.online`
 
-> ⚠️ **Prima di iniziare**: assicurati di avere accesso a cPanel di Namecheap Stellar con i permessi per creare DB, gestire Setup Node.js App, e modificare i file nel document root.
+> ⚠️ **Prima di iniziare**: assicurati di avere accesso a cPanel di Namecheap Stellar con i permessi per creare DB, gestire Setup Node.js App, e usare Git Version Control.
 
 ---
 
@@ -12,15 +12,15 @@
 
 | Componente | Stato | Note |
 |---|---|---|
-| Frontend (PWA) | ✅ pronto | Build in `chaos-web-player/frontend/dist/` (291 KB JS, 9.5 KB CSS) |
+| Frontend (PWA) | ✅ pronto | Build generata **on-deploy** lato server (vedi `.cpanel.yml`) |
 | Backend API | ✅ pronto | Tutti gli endpoint auth/tracks/favorites/playlists/notifications |
 | Auth (login/register/logout) | ✅ testato in dev | Cookie httpOnly + JWT |
 | Player audio | ✅ funzionante | Ma DB vuoto: niente MP3 caricati → "Nessun brano" |
 | Playlist | ✅ funzionante | Lista "SHOW LIST" vuota |
-| Favorites | ⏸️ stub | Solo titolo, nessun preferito visibile |
-| Notifications | ⏸️ stub | Solo titolo, nessuna notifica |
-| Pirate Day | ⏸️ stub | Solo titolo, nessun contenuto |
-| Scan + Seed scripts | ⏸️ non implementati (Fase 2 saltata) | Admin deve caricare MP3 via FTP/cPanel File Manager e scrivere script in seguito |
+| Favorites | ⏸️ stub | Solo titolo |
+| Notifications | ⏸️ stub | Solo titolo |
+| Pirate Day | ⏸️ stub | Solo titolo |
+| Scan + Seed scripts | ⏸️ non implementati (Fase 2 saltata) | Da implementare quando ci saranno MP3 |
 
 ---
 
@@ -33,265 +33,318 @@ https://radio.chaosroom.online/
 ├── /icon-*.png        → static (PWA icons)
 ├── /manifest.webmanifest → static (PWA manifest)
 ├── /sw.js              → static (PWA service worker)
-├── /api/*              → rewrite a Node.js (backend)
-└── /uploads/* (futuro) → static (cover caricate)
+└── /api/*              → rewrite a Node.js (backend)
+```
+
+Sul server Stellar la struttura è:
+```
+/home/tuouser/radio.chaosroom.online/
+├── .htaccess                          ← config Apache
+├── chaos-web-player/                  ← repo clonato
+│   ├── backend/                       ← Node.js + Express
+│   ├── frontend/                      ← sorgenti Vite
+│   └── .cpanel.yml                    ← script auto-deploy
+├── frontend/dist/                     ← build Vite (generata da .cpanel.yml)
+├── backend/private/                   ← MP3 e cover (privato)
+└── tmp/                               ← restart.txt per Passenger
 ```
 
 ---
+
+# PARTE A — Setup iniziale (una tantum)
 
 ## STEP 1 — Crea database MySQL (cPanel)
 
-1. Login cPanel: `https://chaosroom.online:2083` (o vai da Namecheap dashboard)
+1. Login cPanel: `https://chaosroom.online:2083` (o via Namecheap dashboard)
 2. Sezione **Databases** → **MySQL® Databases**
 3. **Create New Database**:
    - Database name: `chaos_radio` (diventerà `tuouser_chaos_radio`)
-   - Click **Create Database**
-4. **Create New User** (sotto):
+4. **Create New User**:
    - Username: `chaos_app` (diventerà `tuouser_chaos_app`)
-   - Password: usa **Password Generator**, copia la password
-   - Click **Create User**
+   - Password: **Password Generator** → copia e salva la password in un posto sicuro
 5. **Add User to Database**:
-   - User: `chaos_app`
-   - Database: `chaos_radio`
-   - Click **Add**
-   - Seleziona **ALL PRIVILEGES** → **Make Changes**
-6. **Remote MySQL Access** (sezione Databases): aggiungi `%` come host per consentire connessioni da Node.js (oppure usa `localhost` se il backend gira sulla stessa macchina)
+   - Seleziona `ALL PRIVILEGES` → **Make Changes**
 
-**Annotati per dopo**:
-- Hostname MySQL: `localhost` (default se Node gira su Stellar)
-- Database completo: `tuouser_chaos_radio` (cPanel prepende il tuo username)
+**Annotati**:
+- DB host: `localhost`
+- DB completo: `tuouser_chaos_radio`
 - User completo: `tuouser_chaos_app`
-- Password: [quella generata]
+- Password: [salvata]
 
----
+## STEP 2 — Crea repository GitHub (privato)
 
-## STEP 2 — Carica i file del backend
+1. Vai su https://github.com/new
+2. **Repository name**: `chaos-radio` (o nome che preferisci)
+3. **Visibilità**: Private (consigliato per ora)
+4. **NON** inizializzare con README/.gitignore/license (li abbiamo già)
+5. Click **Create repository**
+6. GitHub ti mostrerà l'URL: `https://github.com/TUO-USERNAME/chaos-radio.git`
 
-1. cPanel → **File Manager**
-2. Naviga a `/home/tuouser/radio.chaosroom.online/` (creala se non esiste)
-3. Crea sottocartelle:
-   - `backend/`
-   - `backend/private/` (per MP3 e cover, protetto)
-   - `frontend/` (per la build Vite)
-4. **Carica il backend** nella cartella `backend/`:
-   - Da `chaos-web-player/backend/` carica TUTTO tranne `node_modules/`, `.env`, `generated/`
-   - In cPanel usa **Upload** in File Manager (zip + estrai, oppure upload singolo)
+## STEP 3 — Genera Personal Access Token (per push)
 
-File da caricare (struttura):
+Le password GitHub non funzionano più. Serve un PAT:
+
+1. https://github.com/settings/tokens
+2. **Generate new token** → **Fine-grained tokens**
+3. Name: `namecheap-deploy`
+4. Expiration: 90 giorni
+5. **Repository access**: solo `chaos-radio` (quello appena creato)
+6. **Permissions → Repository**: `Contents: Read and Write`
+7. Click **Generate token**
+8. **COPIA IL TOKEN** (non potrai più rivederlo, solo rigenerare)
+
+## STEP 4 — Push del codice locale al repo GitHub
+
+Da terminale (PowerShell o cmd) nella cartella del workspace:
+
+```bash
+cd "C:\Users\GGsabani\Desktop\chaos web player"
+
+# Configura git con le tue credenziali (solo per il primo push)
+git config --global user.name "Il Tuo Nome"
+git config --global user.email "la-tua-email@example.com"
+
+# Aggiungi il remote (sostituisci TUO-USERNAME)
+git remote add origin https://github.com/TUO-USERNAME/chaos-radio.git
+
+# Verifica
+git remote -v
+
+# Push iniziale (ti chiederà username + PAT come password)
+git push -u origin main
 ```
-backend/
-├── prisma/
-│   ├── schema.prisma
-│   └── migrations/20261006105522_init/
-├── prisma7.config.ts
-├── src/
-│   ├── index.js
-│   ├── db.js
-│   ├── lib/
-│   ├── middleware/
-│   └── routes/
-├── package.json
-└── package-lock.json
+
+**Nota**: alla richiesta password incolla il PAT del passo 3, non la password GitHub.
+
+Se `main` non è il branch di default (potrebbe essere `master`):
+```bash
+git branch -M main
+git push -u origin main
 ```
 
-5. **Crea `backend/.env`** con questo contenuto (clicca "+ File"):
+## STEP 5 — Clona il repo in cPanel (Git Version Control)
+
+1. cPanel → **Files** → **Git Version Control**
+2. Click **Create**
+3. Compila:
+   - **Clone URL**: `https://github.com/TUO-USERNAME/chaos-radio.git`
+   - **Repository path**: `/home/tuouser/radio.chaosroom.online`
+   - **Branch**: `main`
+   - **Deployment**: lascia vuoto (usa il .cpanel.yml del repo)
+4. Click **Create**
+5. Aspetta che il clone finisca (30-60 secondi)
+6. Verifica in File Manager: `/home/tuouser/radio.chaosroom.online/chaos-web-player/` deve esistere
+
+## STEP 6 — Trigger primo deploy (esegue .cpanel.yml)
+
+Torna in **Git Version Control** → la tua repo → click **Pull or Deploy** → **Update from Remote**
+
+Questo esegue il `.cpanel.yml`:
+- `npm install --production` in backend
+- `npx prisma generate` e `npx prisma migrate deploy` (crea le 7 tabelle)
+- `npm install` + `npm run build` in frontend
+- Copia `frontend/dist/*` in `/home/tuouser/radio.chaosroom.online/frontend/dist/`
+- Touch `tmp/restart.txt` (restart Passenger)
+
+Tempo: 2-5 minuti. Controlla i log nel pannello per errori.
+
+## STEP 7 — Crea `backend/.env` con credenziali produzione
+
+cPanel → **File Manager** → `/home/tuouser/radio.chaosroom.online/chaos-web-player/backend/`
+
+Click **+ File** → nome `.env` → **Create New File**. Contenuto:
 
 ```env
-# MySQL production (sostituisci tuouser e password)
+# MySQL production
 DB_HOST=localhost
 DB_PORT=3306
 DB_USER=tuouser_chaos_app
-DB_PASSWORD=LA_PASSWORD_GENERATA
+DB_PASSWORD=LA_PASSWORD_GENERATA_ALLO_STEP_1
 DB_NAME=tuouser_chaos_radio
 
-# JWT — genera una nuova random 64 bytes hex per produzione
-# Comando: openssl rand -hex 64
-JWT_SECRET=INSERISCI_QUI_UNA_STRINGA_CASUALE_DI_64_BYTES_HEX
+# JWT — genera con: openssl rand -hex 64
+JWT_SECRET=INSERISCI_QUI_OUTPUT_DI_OPENSSL_RAND_HEX_64
 
 PORT=3001
 NODE_ENV=production
 ```
 
-⚠️ **NON committare questo file** (è in .gitignore)
+> ⚠️ Il file NON verrà sovrascritto dai prossimi pull (è in `.gitignore`).
 
-6. **Crea cartelle private** (per futuri MP3):
-   - `backend/private/audio/`
-   - `backend/private/covers/`
-
----
-
-## STEP 3 — Setup Node.js Application
+## STEP 8 — Setup Node.js App (Application Manager)
 
 1. cPanel → **Software** → **Setup Node.js App**
 2. Click **Create Application**:
-   - **Node.js version**: scegli **22.x** o la più recente disponibile (richiesto per `--experimental-strip-types` se usi Node diretto, NON richiesto se usi `tsx`)
+   - **Node.js version**: scegli **22.x** o la più recente disponibile
    - **Application mode**: Production
-   - **Application root**: `radio.chaosroom.online/backend`
+   - **Application root**: `radio.chaosroom.online/chaos-web-player/backend`
    - **Application URL**: `radio.chaosroom.online`
    - **Application startup file**: `src/index.js`
-   - **Application entry point**: lascia vuoto (usa quello di default)
 3. Click **Create**
-4. Una volta creata, vedrai la card dell'app con:
-   - **Virtual environment** path (es. `/home/tuouser/nodevenv/radio.chaosroom.online/22`)
-   - **Run script** (es. `node src/index.js`)
-5. Click **Run NPM Install** (oppure esegui `npm install` via terminale SSH se hai accesso)
-6. Aspetta che finisca (1-3 minuti)
-7. Click **Restart** per avviare il backend
+4. Nella card dell'app creata, copia il **Virtual environment** activation command (es. `source /home/tuouser/nodevenv/radio.chaosroom.online/22/bin/activate`)
+5. Click **Run NPM Install**
+6. Click **Restart** per avviare
 
-> **Se Stellar offre solo Node 20 LTS**: il progetto usa `tsx` come runtime, compatibile con Node 18+. Lo script `start` in `package.json` è già `tsx src/index.js`, quindi funziona.
+> **Se Stellar offre solo Node 20 LTS**: `tsx` (già in package.json) compila i `.ts` di Prisma a runtime. Funziona out-of-the-box.
 
----
+## STEP 9 — Configura `.htaccess` (SPA + proxy /api)
 
-## STEP 4 — Applica le migration al DB
+cPanel → File Manager → `/home/tuouser/radio.chaosroom.online/`
 
-Hai 2 opzioni:
-
-### Opzione A — Via SSH (se hai accesso)
-
-```bash
-cd /home/tuouser/radio.chaosroom.online/backend
-# Carica .env
-source .env
-# (oppure esporta le singole variabili)
-
-npx prisma migrate deploy
-```
-
-### Opzione B — Via Setup Node.js App (senza SSH)
-
-Dopo che il backend è avviato, apri in cPanel → **Setup Node.js App** → la tua app → **Run Script**. Esegui:
-```
-npx prisma migrate deploy
-```
-
-Questo crea le 7 tabelle in `chaos_radio`. Verifica con **phpMyAdmin** (sezione Databases) che siano presenti: `users`, `tracks`, `favorites`, `playlists`, `playlist_items`, `notifications`, `notification_reads`.
-
----
-
-## STEP 5 — Deploy del frontend
-
-1. **Build locale** (già fatta in `chaos-web-player/frontend/dist/`)
-2. **Carica il contenuto di `dist/`** in `radio.chaosroom.online/frontend/dist/` via File Manager
-
-⚠️ **Importante**: carica i **file dentro `dist/`** (index.html, assets/, sw.js, manifest, icons), NON la cartella `dist/` stessa.
-
----
-
-## STEP 6 — Configura `.htaccess` per servire frontend + API
-
-1. cPanel → File Manager → `/home/tuouser/radio.chaosroom.online/`
-2. Crea/modifica `.htaccess` (se non esiste, "+ File")
-3. Contenuto:
+Crea `.htaccess` (se esiste già, modifica):
 
 ```apache
-# Chaos Radio — Apache config
-# Serve il frontend statico + fa il proxy di /api/* al backend Node.js
-
-# Abilita rewrite engine
 RewriteEngine On
 
-# Forza HTTPS
+# Force HTTPS
 RewriteCond %{HTTPS} !=on
 RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
 
-# Se la richiesta è per /api/* → passa al Node backend (porta interna)
+# Proxy /api/* → Node backend (porta interna 3001)
 RewriteCond %{REQUEST_URI} ^/api/
 RewriteRule ^api/(.*)$ http://127.0.0.1:3001/api/$1 [P,L]
 
-# Per tutto il resto: serve index.html (SPA fallback)
+# SPA fallback: per qualsiasi path non-file, serve index.html
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^.*$ /frontend/dist/index.html [L]
 
-# Cache assets statici per 1 anno
-<FilesMatch "\.(js|css|png|svg|woff2|ico)$">
+# Cache assets statici (hash nei nomi file)
+<FilesMatch "\.(js|css|png|svg|woff2|ico|webmanifest)$">
   Header set Cache-Control "public, max-age=31536000, immutable"
 </FilesMatch>
 
-# Sicurezza
+# No cache per index.html, sw.js
+<FilesMatch "^(index\.html|sw\.js|registerSW\.js|workbox-.*\.js)$">
+  Header set Cache-Control "no-cache, must-revalidate"
+</FilesMatch>
+
+# Security headers
 Header always set X-Content-Type-Options "nosniff"
 Header always set X-Frame-Options "DENY"
 Header always set Referrer-Policy "strict-origin-when-cross-origin"
+Header always set Service-Worker-Allowed-Origin "/"
 
-# Disabilita directory listing
 Options -Indexes
 ```
 
-> **Se il proxy interno non funziona**: prova a mettere `localhost:3001` o l'IP interno che ti fornisce Namecheap. In alternativa, configura il Setup Node.js App per ascoltare direttamente sulla porta pubblica (non ideale per sicurezza ma funzionante).
+---
+
+# PARTE B — Workflow di update
+
+## Update del codice (dopo modifiche locali)
+
+```bash
+cd "C:\Users\GGsabani\Desktop\chaos web player"
+
+# Verifica cosa è cambiato
+git status
+
+# Commit
+git add .
+git commit -m "feat: descrizione delle modifiche"
+
+# Push
+git push origin main
+```
+
+## Trigger del deploy su cPanel
+
+1. cPanel → **Git Version Control** → la tua repo
+2. Click **Pull or Deploy** → **Update from Remote**
+3. Il `.cpanel.yml` ricostruisce tutto automaticamente (2-5 min)
+
+## Update delle env vars (es. nuovo JWT_SECRET)
+
+1. cPanel → File Manager → `/home/tuouser/radio.chaosroom.online/chaos-web-player/backend/.env`
+2. Modifica con Editor
+3. Setup Node.js App → Restart
+
+## Update solo del backend (no rebuild frontend)
+
+Salta il `npm run build` in `.cpanel.yml` rimuovendo temporaneamente le righe frontend. Oppure fai le modifiche e trigger il deploy completo (ricostruisce anche il frontend, ci mette 1-2 min in più).
 
 ---
 
-## STEP 7 — Verifica
+# PARTE C — Verifica
 
-Apri `https://radio.chaosroom.online` nel browser. Dovresti vedere:
+Apri `https://radio.chaosroom.online`:
 
-- [ ] La pagina mostra il logo Chaos Radio + form di login
-- [ ] SSL valido (lucchetto verde, https)
-- [ ] Clicca "Registrati" → form di registrazione funziona
+- [ ] Pagina mostra logo Chaos Radio + form login
+- [ ] SSL valido (lucchetto verde)
+- [ ] Clicca "Registrati" → form registrazione funziona
 - [ ] Dopo registrazione → redirect a `/player`
-- [ ] Pagina player mostra messaggio "Nessun brano" (DB vuoto)
-- [ ] Naviga su Playlist (BottomNav) → "SHOW LIST" vuoto
-- [ ] Favorites, Notifications, Pirate Day → solo titolo (stub)
-- [ ] Logout → torna a /login
+- [ ] Player mostra "Nessun brano" (DB vuoto)
+- [ ] BottomNav: clicca su Playlist → "SHOW LIST" vuoto
+- [ ] Favorites/Notifications/Pirate Day → solo titolo
+- [ ] Logout → redirect a `/login`
 
-### Test API diretto
-
+Test API:
 ```bash
-# Da terminale locale con curl
 curl https://radio.chaosroom.online/api/health
-# → {"status":"ok","timestamp":"..."}
+# → {"status":"ok",...}
 
-# Register
 curl -X POST https://radio.chaosroom.online/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","password":"testpass123","displayName":"Test"}'
-
-# Login + cookie
-curl -X POST https://radio.chaosroom.online/api/auth/login \
-  -H "Content-Type: application/json" \
-  -c cookies.txt \
   -d '{"email":"test@example.com","password":"testpass123"}'
-
-# /me con cookie
-curl -b cookies.txt https://radio.chaosroom.online/api/auth/me
 ```
 
 ---
 
-## Troubleshooting
+# Troubleshooting
 
-### Backend non si avvia
-- Controlla i log: cPanel → Setup Node.js App → "Open Logs"
-- Verifica che `npm install` sia completato
-- Verifica che `.env` esista e abbia tutte le variabili
+### Deploy fallisce in `.cpanel.yml`
 
-### Frontend non carica
-- Apri DevTools → Console per errori
-- Verifica che `.htaccess` sia nella root (`/home/tuouser/radio.chaosroom.online/.htaccess`)
-- Verifica che i file siano in `/frontend/dist/` (NON `dist/` direttamente)
+cPanel mostra i log dell'ultimo deploy. Cerca "Error". Cause comuni:
+- `npm install` fallisce: forse serve `NODE_ENV=development` o manca una dep
+- `npx prisma migrate deploy` fallisce: connessione DB o permessi
+- Path sbagliato: usa sempre `$DEPLOY_ROOT/chaos-web-player/...`
 
-### /api/* ritorna 404
-- `.htaccess` non sta facendo il proxy
-- Verifica sintassi Apache (chiedi al supporto Namecheap se serve `mod_proxy`)
+### Backend non si avvia dopo restart
+
+cPanel → Setup Node.js App → "Open Logs" → cerca errori TypeScript/import.
+
+### `/api/*` ritorna 404
+
+`.htaccess` non sta facendo il proxy. Verifica che `mod_proxy` sia attivo (chiedi supporto Namecheap).
 
 ### Cookie non persiste
-- Verifica che il backend invii `Set-Cookie` con flag `Secure` (richiesto in HTTPS)
-- Verifica CORS allowlist (in `src/index.js` è hardcoded per `radio.chaosroom.online`)
+
+Verifica in DevTools → Application → Cookies che `token` abbia flag `Secure` (richiesto in HTTPS). Verifica in `src/index.js` CORS allowlist includa `https://radio.chaosroom.online`.
+
+### Build frontend fallisce per memoria
+
+Stellar ha limiti RAM. Se `npm run build` esce con OOM, prova a limitare i worker:
+```yaml
+    - cd $DEPLOY_ROOT/chaos-web-player/frontend
+    - NODE_OPTIONS=--max-old-space-size=512 npm run build
+```
 
 ---
 
-## Note operative post-deploy
+# Alternative
 
-- **Dopo riavvio WSL/cPanel Node restart**: la prima richiesta può avere 1s di cold start
-- **Logs**: cPanel → Setup Node.js App → Open Logs
-- **Update**: modifica il codice localmente, rebuild, upload via FTP/Git, restart Node app
-- **DB backup**: cPanel → Backup Wizard (backup giornaliero di MySQL incluso)
+## GitHub Actions (CI/CD vero)
+
+Vedi `.github/workflows/deploy.yml` per un workflow che builda su GitHub e fa SSH deploy. Richiede SSH abilitato su Stellar (spesso non c'è su shared base). Più complesso ma più professionale.
+
+## Deploy manuale (fallback)
+
+Se Git Version Control dà problemi, vedi `deploy/post-deploy.sh` e fai upload manuale via FTP/File Manager dei file escludendo `node_modules`, `.env`, `generated/`.
 
 ---
 
-## Cosa fare dopo
+# Note post-deploy
 
-1. **Caricare MP3**: copia MP3 in `/home/tuouser/radio.chaosroom.online/backend/private/audio/`
-2. **Implementare script di scansione** (Fase 2 — script/scan.js + cron)
-3. **Completare le 3 pagine stub** (Fase 5.3, 5.4, 5.5)
-4. **Configurare DNS** se `radio.chaosroom.online` non è ancora un subdomain attivo
+- **MP3**: copia file in `/home/tuouser/radio.chaosroom.online/chaos-web-player/backend/private/audio/`
+- **Fase 2**: implementa `scripts/scan.js` e aggiungi cron in cPanel
+- **Fase 5.3-5.5**: completa le pagine stub e push
+- **DNS**: se `radio.chaosroom.online` non è ancora attivo, configura il subdomain in cPanel → Domains
+
+## File di riferimento
+
+- `.cpanel.yml` (root del repo) — script auto-deploy
+- `.github/workflows/deploy.yml` — CI/CD alternativo
+- `backend/.env.example` — template env vars
+- `deploy/post-deploy.sh` — bootstrap script
+- `deploy/.htaccess.example` — config Apache

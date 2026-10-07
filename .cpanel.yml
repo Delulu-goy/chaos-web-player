@@ -1,0 +1,40 @@
+# cPanel Git Version Control — auto-deploy config
+# Questo file viene letto da cPanel dopo ogni `git pull` per eseguire
+# comandi di build e deploy automatici.
+# Docs: https://docs.cpanel.net/cpanel/files/domains/manage-git-version-control/
+
+---
+deployment:
+  tasks:
+    # Setup paths
+    - export DEPLOY_ROOT=/home/$CPANEL_USER/radio.chaosroom.online
+    - export FRONTEND_DEPLOY=$DEPLOY_ROOT/frontend
+
+    # ── Backend ────────────────────────────────
+    - cd $DEPLOY_ROOT/chaos-web-player/backend
+    - echo "[deploy] installing backend dependencies..."
+    - npm install --production
+    - echo "[deploy] generating Prisma client..."
+    - npx prisma generate
+    - echo "[deploy] running migrations..."
+    - npx prisma migrate deploy
+    - echo "[deploy] ensuring private dirs exist..."
+    - mkdir -p $DEPLOY_ROOT/chaos-web-player/backend/private/audio
+    - mkdir -p $DEPLOY_ROOT/chaos-web-player/backend/private/covers
+
+    # ── Frontend ───────────────────────────────
+    - cd $DEPLOY_ROOT/chaos-web-player/frontend
+    - echo "[deploy] installing frontend dependencies..."
+    - npm install
+    - echo "[deploy] building frontend..."
+    - npm run build
+    - echo "[deploy] copying dist to public path..."
+    - mkdir -p $FRONTEND_DEPLOY/dist
+    - rm -rf $FRONTEND_DEPLOY/dist/*
+    - cp -r dist/. $FRONTEND_DEPLOY/dist/
+
+    # ── Restart Node app ───────────────────────
+    # Phusion Passenger (Stellar) auto-restart su touch di tmp/restart.txt
+    - mkdir -p $DEPLOY_ROOT/tmp
+    - touch $DEPLOY_ROOT/tmp/restart.txt
+    - echo "[deploy] ✓ Deploy complete. Node app restarting..."
