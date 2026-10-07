@@ -1,0 +1,42 @@
+# Chaos Radio — Apache .htaccess
+# Copia questo file in /home/tuouser/radio.chaosroom.online/.htaccess (la root del subdomain)
+
+# Abilita rewrite engine
+RewriteEngine On
+
+# Forza HTTPS
+RewriteCond %{HTTPS} !=on
+RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
+
+# Se la richiesta è per /api/* → passa al Node backend (porta 3001 interna)
+RewriteCond %{REQUEST_URI} ^/api/
+RewriteRule ^api/(.*)$ http://127.0.0.1:3001/api/$1 [P,L]
+
+# Per tutto il resto: serve index.html (SPA fallback)
+# Esclusione per i file statici veri (esiste già il file)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^.*$ /frontend/dist/index.html [L]
+
+# Cache assets statici per 1 anno (hash nei nomi file → safe)
+<FilesMatch "\.(js|css|png|svg|woff2|ico|webmanifest)$">
+  Header set Cache-Control "public, max-age=31536000, immutable"
+</FilesMatch>
+
+# Non cachare index.html e sw.js
+<FilesMatch "^(index\.html|sw\.js|registerSW\.js|workbox-.*\.js)$">
+  Header set Cache-Control "no-cache, must-revalidate"
+</FilesMatch>
+
+# Sicurezza
+Header always set X-Content-Type-Options "nosniff"
+Header always set X-Frame-Options "DENY"
+Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+# Servizio file statici
+<IfModule mod_headers.c>
+  Header set Service-Worker-Allowed-Origin "/"
+</IfModule>
+
+# Disabilita directory listing
+Options -Indexes
