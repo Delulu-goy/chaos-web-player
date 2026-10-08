@@ -35,8 +35,11 @@ chaos-logo.png
 **/build/
 **/dev-dist/
 
-# Output Prisma generated client (rigenerato da `prisma generate`)
-**/generated/
+# Output Prisma generated client — committato per permettere deploy su Stellar senza terminale.
+# (Prisma 7 genera solo TypeScript, portabile cross-platform)
+# Output Prisma generated client — committato per permettere deploy su Stellar senza terminale.
+# (Prisma 7 genera solo TypeScript, portabile cross-platform)
+!**/generated/prisma/
 
 # Log files
 **/logs/

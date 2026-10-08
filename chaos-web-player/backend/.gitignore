@@ -5,8 +5,7 @@ node_modules/
 .env
 .env.local
 
-# Prisma generated client
-/generated/prisma
+# Prisma generated client è committato (vedi root .gitignore) per deploy su Stellar
 
 # Logs
 logs/

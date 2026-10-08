@@ -152,7 +152,9 @@ Tempo: 2-5 minuti. Controlla i log nel pannello per errori.
 
 ## STEP 7 — Crea `backend/.env` con credenziali produzione
 
-cPanel → **File Manager** → `/home/tuouser/radio.chaosroom.online/chaos-web-player/backend/`
+cPanel → **File Manager** → `/home/tuouser/radio.chaosroom.online/repo/chaos-web-player/backend/`
+
+(Sostituisci `tuouser` col tuo username reale, es. `chaouaza`)
 
 Click **+ File** → nome `.env` → **Create New File**. Contenuto:
 
@@ -160,9 +162,9 @@ Click **+ File** → nome `.env` → **Create New File**. Contenuto:
 # MySQL production
 DB_HOST=localhost
 DB_PORT=3306
-DB_USER=tuouser_chaos_app
+DB_USER=chaouaza_chaos_app
 DB_PASSWORD=LA_PASSWORD_GENERATA_ALLO_STEP_1
-DB_NAME=tuouser_chaos_radio
+DB_NAME=chaouaza_chaos_radio
 
 # JWT — genera con: openssl rand -hex 64
 JWT_SECRET=INSERISCI_QUI_OUTPUT_DI_OPENSSL_RAND_HEX_64
@@ -173,7 +175,20 @@ NODE_ENV=production
 
 > ⚠️ Il file NON verrà sovrascritto dai prossimi pull (è in `.gitignore`).
 
+## STEP 7b — Applica migration al DB (via phpMyAdmin)
+
+> SSH disabilitato su Stellar shared, niente terminale. Il client Prisma è già committato in `backend/generated/prisma/`, ma serve comunque applicare la migration al DB.
+
+1. cPanel → **Databases** → **phpMyAdmin**
+2. Click sulla tabella `chaouaza_chaos_radio` (o `chaos_radio` se non hai prefisso) nella sidebar sinistra
+3. Click tab **Import** in alto
+4. Click **Choose File** → naviga a `/home/chaouaza/radio.chaosroom.online/repo/chaos-web-player/backend/prisma/migrations/20261006105522_init/migration.sql`
+5. Click **Go** in fondo alla pagina
+6. Verifica che le 7 tabelle siano presenti nella sidebar: `users`, `tracks`, `favorites`, `playlists`, `playlist_items`, `notifications`, `notification_reads`
+
 ## STEP 8 — Setup Node.js App (Application Manager)
+
+> ⚠️ **Niente terminale su Stellar shared** — SSH è disabilitato. Abbiamo rimosso `postinstall: prisma generate` e committato il client Prisma generato (`backend/generated/prisma/`) direttamente nel repo, così non serve `prisma generate`. Per la migration usiamo **phpMyAdmin** (vedi STEP 9).
 
 1. cPanel → **Software** → **Setup Node.js App**
 2. Click **Create Application**:
@@ -183,17 +198,11 @@ NODE_ENV=production
    - **Application URL**: `radio.chaosroom.online`
    - **Application startup file**: `src/index.js`
 3. Click **Create**
-4. Nella card dell'app creata, copia il **Virtual environment** activation command (es. `source /home/tuouser/nodevenv/radio.chaosroom.online/22/bin/activate && cd repo/chaos-web-player/backend`)
-5. Click **Run NPM Install** (senza `postinstall` perché Prisma 7 WASM binary può fallire su Stellar)
+4. Nella card dell'app, prendi nota del percorso **Virtual environment** (es. `/home/chaouaza/nodevenv/radio.chaosroom.online/22`)
+5. Click **Run NPM Install** (senza `postinstall` → dovrebbe completare OK)
+6. Click **Restart** per avviare
 
-> **Dopo npm install**, devi eseguire manualmente `prisma generate` dal terminale SSH cPanel (Setup Node.js App → la tua app → **Open Terminal** o **Enter to the virtual environment**):
-> ```bash
-> cd ~/radio.chaosroom.online/repo/chaos-web-player/backend
-> source /home/tuouser/nodevenv/radio.chaosroom.online/22/bin/activate
-> npx prisma generate
-> ```
-
-> **Se Stellar offre solo Node 20 LTS**: `tsx` (già in package.json) compila i `.ts` di Prisma a runtime. Funziona out-of-the-box.
+> Se Stellar offre solo Node 20 LTS: `tsx` (già in package.json) compila i `.ts` di Prisma a runtime. Funziona out-of-the-box.
 
 ## STEP 9 — Configura `.htaccess` (SPA + proxy /api)
 
