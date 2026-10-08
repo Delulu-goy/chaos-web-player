@@ -29,11 +29,15 @@ chaos-logo.png
 # Node modules (in qualsiasi sottocartella)
 **/node_modules/
 
-# Output build (frontend)
+# Output build (frontend) — escluso di default, MA forziamo il commit
+# di chaos-web-player/frontend/dist/ per deploy su Stellar senza build step.
 **/dist/
 **/dist-ssr/
 **/build/
 **/dev-dist/
+
+# Eccezione: committa la build frontend pre-generata per il deploy
+!chaos-web-player/frontend/dist/
 
 # Output Prisma generated client — committato per permettere deploy su Stellar senza terminale.
 # (Prisma 7 genera solo TypeScript, portabile cross-platform)

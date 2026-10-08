@@ -1,6 +1,8 @@
 // Chaos Radio — Express entry point
 
 import "dotenv/config";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
@@ -65,6 +67,35 @@ app.use("/api/notifications", notificationsRoutes);
 app.use("/api", (req, res) => {
   res.status(404).json({ error: "not_found" });
 });
+
+// ── Frontend static serving (solo in produzione) ──────────────────
+// In dev Vite serve il frontend su :5173; in prod il backend serve i
+// file statici pre-buildati da chaos-web-player/frontend/dist/
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const FRONTEND_DIST = path.resolve(__dirname, "../../frontend/dist");
+
+if (process.env.NODE_ENV === "production") {
+  app.use(
+    express.static(FRONTEND_DIST, {
+      maxAge: "1y",
+      immutable: true,
+      setHeaders: (res, path) => {
+        // Service worker e index.html non devono essere cachati
+        if (path.endsWith("index.html") || path.endsWith("sw.js") || path.includes("workbox-")) {
+          res.setHeader("Cache-Control", "no-cache, must-revalidate");
+        }
+      },
+    })
+  );
+
+  // SPA fallback: ogni rotta non-API che non è un file statico → index.html
+  app.get(/^\/(?!api\/).*/, (req, res, next) => {
+    res.sendFile(path.join(FRONTEND_DIST, "index.html"), (err) => {
+      if (err) next(err);
+    });
+  });
+}
 
 // Global error handler (DEVE essere l'ultimo middleware)
 app.use(errorHandler);
