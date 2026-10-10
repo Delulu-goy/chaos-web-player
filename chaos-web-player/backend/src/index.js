@@ -1,6 +1,7 @@
 // Chaos Radio — Express entry point
 
-import "dotenv/config";
+// Le env vars sono fornite da cPanel Application Manager (process.env).
+// In locale (.env) si possono caricare con `node --env-file=.env ...`.
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
