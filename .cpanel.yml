@@ -45,7 +45,11 @@ deployment:
     - cp -r dist/. $FRONTEND_DEPLOY/dist/
 
     # ── Restart Node app ───────────────────────
-    # Phusion Passenger (Stellar) auto-restart su touch di tmp/restart.txt
+    # Phusion Passenger (Stellar) auto-restart su touch di tmp/restart.txt.
+    # Creiamo entrambi: nel document root e nell'app root, per coprire
+    # tutte le convenzioni di Passenger.
     - mkdir -p $DEPLOY_ROOT/tmp
+    - mkdir -p $SOURCE_ROOT/backend/tmp
     - touch $DEPLOY_ROOT/tmp/restart.txt
-    - echo "[deploy] ✓ Deploy complete. Node app restarting..."
+    - touch $SOURCE_ROOT/backend/tmp/restart.txt
+    - echo "[deploy] ✓ Deploy complete. Node app restart triggered."

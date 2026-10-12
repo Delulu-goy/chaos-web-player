@@ -2,6 +2,10 @@
 
 // Le env vars sono fornite da cPanel Application Manager (process.env).
 // In locale (.env) si possono caricare con `node --env-file=.env ...`.
+
+// MARKER per verificare che Passenger abbia ricaricato il file
+console.log("[chaos-radio] Boot v2026-10-12-FINAL-FIX pid=" + process.pid + " node=" + process.version);
+
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
