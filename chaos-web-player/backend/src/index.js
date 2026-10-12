@@ -25,6 +25,28 @@ import notificationsRoutes from "./routes/notifications.routes.js";
 const app = express();
 const PORT = parseInt(process.env.PORT ?? "3001", 10);
 
+// MARKER per verificare che Passenger abbia ricaricato il file
+console.log("[chaos-radio] Boot v2026-10-12-FINAL-FIX pid=" + process.pid + " node=" + process.version);
+
+// Debug endpoint: ci dice esattamente cosa sta girando
+app.get("/api/debug", (req, res) => {
+  res.json({
+    pid: process.pid,
+    node: process.version,
+    uptime: process.uptime(),
+    env_check: {
+      DB_HOST: process.env.DB_HOST ?? "MISSING",
+      DB_USER: process.env.DB_USER ?? "MISSING",
+      DB_NAME: process.env.DB_NAME ?? "MISSING",
+      DB_PORT: process.env.DB_PORT ?? "MISSING",
+      JWT_SECRET: process.env.JWT_SECRET ? "set (" + process.env.JWT_SECRET.length + " chars)" : "MISSING",
+      NODE_ENV: process.env.NODE_ENV ?? "MISSING",
+      PORT: process.env.PORT ?? "MISSING",
+    },
+    cwd: process.cwd(),
+  });
+});
+
 // Trust proxy (necessario per correttamente interpretare X-Forwarded-* dietro reverse proxy)
 // In dev siamo diretti, su Stellar cPanel gestisce proxy. trust proxy = 1 è safe.
 app.set("trust proxy", 1);
