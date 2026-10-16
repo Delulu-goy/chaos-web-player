@@ -13,8 +13,11 @@ screenshots/
 # Template React originale da cui si è partiti per il refactor
 ChaosRadioPlayer.jsx
 
-# Logo usato solo come riferimento visivo, non parte dell'app
+# Logo sorgente al root (ignorato: serve solo come input per la generazione icone)
 chaos-logo.png
+
+# Eccezione: committa il logo dentro frontend/public (usato per favicon, PWA icons, branding)
+!chaos-web-player/frontend/public/chaos-logo.png
 
 # ────────────────────────────────────────────────────────────────
 # Kilo / editor config
