@@ -10,7 +10,7 @@ export default defineConfig({
       registerType: "autoUpdate",
       // In dev il service worker è disabilitato per non rompere HMR
       devOptions: { enabled: false },
-      includeAssets: ["favicon.svg", "icon.svg", "icon-192.png", "icon-512.png"],
+      includeAssets: ["favicon.svg", "icon.svg", "icon-192.png", "icon-512.png", "chaos-logo.png"],
       manifest: {
         name: "Chaos Radio",
         short_name: "Chaos",
