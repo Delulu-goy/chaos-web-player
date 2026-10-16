@@ -8,7 +8,7 @@ export default {
     extend: {
       fontFamily: {
         mono: [
-          "JetBrains Mono",
+          '"Source Code Pro"',
           "ui-monospace",
           "SFMono-Regular",
           "Menlo",
