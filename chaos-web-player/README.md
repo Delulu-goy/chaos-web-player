@@ -30,9 +30,9 @@ chaos-web-player/
 | 4 — Routing & Auth flow | ✅ | 9 route, ProtectedRoute, hydrate-on-mount |
 | 5.1 — Player | ✅ | Audio reale, waveform, controls, Media Session |
 | 5.2 — Playlist | ✅ | "SHOW LIST" con riuso TrackListItem |
-| 5.3 — Favorites | ⏸️ stub | Solo titolo |
-| 5.4 — Notifications | ⏸️ stub | Solo titolo |
-| 5.5 — Pirate Day | ⏸️ stub | Solo titolo |
+| 5.3 — Favorites | ✅ | "USER FAVORITES" con riuso TrackListItem + useFavoritesStore |
+| 5.4 — Notifications | ✅ | "UPDATES" con optimistic mark-read via useNotificationsStore |
+| 5.5 — Pirate Day | ✅ | Countdown live + progress bar + curator + descrizione con **highlight** |
 | 6 — PWA & polish | 🟡 parziale | PWA OK + Media Session, polish (toast, errori) da completare |
 | 7 — Deploy | ✅ | **Live su radio.chaosroom.online** |
 

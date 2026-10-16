@@ -1,7 +1,8 @@
 # Chaos Radio — Deploy su Namecheap Stellar
 
 **Data preparazione**: 2026-10-07
-**Versione**: MVP iniziale (Fase 0-4, 5.1, 5.2 completate; 5.3-5.5 differite; Fase 2 saltata)
+**Ultimo aggiornamento**: 2026-10-16 (Fase 5 completata: 5.3, 5.4, 5.5)
+**Versione**: MVP completo (Fasi 0-5 completate; Fase 2 saltata, da implementare)
 **Target**: subdomain `radio.chaosroom.online`
 
 > ⚠️ **Prima di iniziare**: assicurati di avere accesso a cPanel di Namecheap Stellar con i permessi per creare DB, gestire Setup Node.js App, e usare Git Version Control.
@@ -17,9 +18,9 @@
 | Auth (login/register/logout) | ✅ testato in dev | Cookie httpOnly + JWT |
 | Player audio | ✅ funzionante | Ma DB vuoto: niente MP3 caricati → "Nessun brano" |
 | Playlist | ✅ funzionante | Lista "SHOW LIST" vuota |
-| Favorites | ⏸️ stub | Solo titolo |
-| Notifications | ⏸️ stub | Solo titolo |
-| Pirate Day | ⏸️ stub | Solo titolo |
+| Favorites | ✅ completo | Fetch `/api/favorites` + riuso `TrackListItem` con cuore filled |
+| Notifications | ✅ completo | Fetch `/api/notifications` + optimistic mark-read |
+| Pirate Day | ✅ completo | Countdown live + progress bar + curator + descrizione con highlight |
 | Scan + Seed scripts | ⏸️ non implementati (Fase 2 saltata) | Da implementare quando ci saranno MP3 |
 
 ---
@@ -293,7 +294,9 @@ Apri `https://radio.chaosroom.online`:
 - [ ] Dopo registrazione → redirect a `/player`
 - [ ] Player mostra "Nessun brano" (DB vuoto)
 - [ ] BottomNav: clicca su Playlist → "SHOW LIST" vuoto
-- [ ] Favorites/Notifications/Pirate Day → solo titolo
+- [ ] Favorites → empty state "Nessun preferito" (tocca cuore su brano per aggiungere)
+- [ ] Notifications → empty state "Nessuna notifica"
+- [ ] Pirate Day → empty state "Nessuna playlist attiva" (finché non viene creata)
 - [ ] Logout → redirect a `/login`
 
 Test API:
@@ -411,8 +414,8 @@ Se Git Version Control dà problemi, vedi `deploy/post-deploy.sh` e fai upload m
 # Note post-deploy
 
 - **MP3**: copia file in `/home/tuouser/radio.chaosroom.online/chaos-web-player/backend/private/audio/`
-- **Fase 2**: implementa `scripts/scan.js` e aggiungi cron in cPanel
-- **Fase 5.3-5.5**: completa le pagine stub e push
+- **Fase 2**: implementa `scripts/scan.js` e aggiungi cron in cPanel (oppure inserisci record `tracks` manualmente via phpMyAdmin)
+- **Fase 6**: polish (toast errori, ottimizzazione mobile breakpoint 375px, eventuali miglioramenti UX)
 - **DNS**: se `radio.chaosroom.online` non è ancora attivo, configura il subdomain in cPanel → Domains
 
 ## File di riferimento
