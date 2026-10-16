@@ -1,39 +1,40 @@
 # Chaos Radio — Root
 
-Monorepo del web player Chaos Radio, deployato su `radio.chaosroom.online` (Namecheap Stellar).
+Monorepo del web player Chaos Radio, **live su [radio.chaosroom.online](https://radio.chaosroom.online)** (Namecheap Stellar).
 
 ## Struttura
 
 ```
 chaos-web-player/
 ├── backend/        # Node + Express + Prisma (MySQL)
-├── frontend/       # Vite + React + TypeScript
-├── deploy/         # File pronti per upload su Stellar + DEPLOY.md
-└── plans/          # piani di implementazione
+├── frontend/       # Vite + React + TypeScript (build statico committato)
+├── deploy/         # .cpanel.yml + .htaccess.example + DEPLOY.md
+└── plans/          # piani di implementazione e changelog
 ```
 
 ## Stack
 
 - **Frontend**: Vite 8 + React 19 + TypeScript + Tailwind v3 (pinned) + Zustand + React Router v7
-- **Backend**: Node 22 (WSL dev) / Node 20+ con `tsx` (Stellar prod) + Express 5 + **Prisma 7** con **`@prisma/adapter-mariadb`** + MySQL 8 + JWT + bcrypt
-- **Deploy**: Namecheap Stellar (cPanel Application Manager), subdomain `radio.chaosroom.online`
+- **Backend**: Node 22 (cPanel Stellar) + Express 5 + **Prisma 7** con `@prisma/adapter-mariadb` + `mariadb` driver + MySQL 8 + JWT + bcrypt
+- **Runtime TS**: `tsx` 4.x (esegue i `.ts` del client Prisma generato)
+- **Deploy**: Namecheap Stellar (cPanel Application Manager + Git Version Control), subdomain `radio.chaosroom.online`, HTTPS via AutoSSL
 
 ## Stato del progetto
 
 | Fase | Stato | Note |
 |---|---|---|
-| 0 — Setup locale | ✅ | Tutto funzionante |
+| 0 — Setup locale | ✅ | WSL Ubuntu + MySQL locale + portproxy Windows |
 | 1 — Backend foundation | ✅ | 11 endpoint REST auth-protected |
-| 2 — Backend scripts (scan/seed) | ⏭️ saltata | Da implementare quando ci saranno MP3 |
+| 2 — Backend scripts (scan/seed) | ⏭️ saltata | Upload manuale via File Manager + phpMyAdmin |
 | 3 — Frontend setup | ✅ | PWA + manifest + icone |
 | 4 — Routing & Auth flow | ✅ | 9 route, ProtectedRoute, hydrate-on-mount |
-| 5.1 — Player | ✅ | Audio reale, waveform, controls |
+| 5.1 — Player | ✅ | Audio reale, waveform, controls, Media Session |
 | 5.2 — Playlist | ✅ | "SHOW LIST" con riuso TrackListItem |
 | 5.3 — Favorites | ⏸️ stub | Solo titolo |
 | 5.4 — Notifications | ⏸️ stub | Solo titolo |
 | 5.5 — Pirate Day | ⏸️ stub | Solo titolo |
-| 6 — PWA & polish | ✅ parziale | PWA OK, Media Session OK, polish da completare |
-| 7 — Deploy | 🟡 in corso | Prima release su Stellar |
+| 6 — PWA & polish | 🟡 parziale | PWA OK + Media Session, polish (toast, errori) da completare |
+| 7 — Deploy | ✅ | **Live su radio.chaosroom.online** |
 
 ## Quickstart (sviluppo locale Windows + WSL)
 
@@ -103,41 +104,86 @@ npm run dev
 
 Apri `http://localhost:5173`. Vite proxy inoltra `/api/*` al backend.
 
+> ⚠️ **Importante**: `chaos-web-player/frontend/.env.local` ha `VITE_API_URL=http://localhost:3001/api` per il dev. **MAI committare** questa config: ha priorità su `.env.production` in Vite e renderebbe la build di produzione rotta (vedi "Trappole" sotto).
+
 ## Deploy su produzione
 
-Vedi **[`deploy/DEPLOY.md`](./deploy/DEPLOY.md)** per la guida completa passo-passo.
+**Live**: [https://radio.chaosroom.online](https://radio.chaosroom.online)
+
+Il deploy è completamente Git-based. Vedi **[`deploy/DEPLOY.md`](./deploy/DEPLOY.md)** per la guida completa passo-passo.
 
 In sintesi:
-1. cPanel → MySQL® Databases → crea `chaos_radio` + user `chaos_app`
-2. Upload backend (escluso `node_modules/`, `.env`, `generated/`) in `/home/tuouser/radio.chaosroom.online/backend/`
-3. Crea `backend/.env` con credenziali di produzione
-4. Setup Node.js App → scegli Node 22+ (o 20+ con `tsx` che è già nello script)
-5. `npm install` (Application Manager)
-6. `npx prisma migrate deploy` (applica migration)
-7. Upload del contenuto di `frontend/dist/` in `/home/tuouser/radio.chaosroom.online/frontend/dist/`
-8. Copia `.htaccess` (in `deploy/.htaccess.example`) nella root
-9. Restart Node app, testa `https://radio.chaosroom.online`
+1. cPanel → MySQL® Databases → crea `chaos_radio` + user `chaos_app` (auth plugin `mysql_native_password`, grant `ALL ON *.*`)
+2. cPanel → Git Version Control → clone del repo in `/home/tuouser/radio.chaosroom.online/chaos-web-player/`
+3. cPanel → Setup Node.js App → Node 22 → Application root: `chaos-web-player/backend` → startup: `src/index.js`
+4. Setup Environment Variables (8 vars nel pannello, vedi sotto)
+5. Setup Node.js App → Run NPM Install (`.cpanel.yml` esegue automaticamente + `touch tmp/restart.txt` per restart Passenger)
+6. Applica migration via **phpMyAdmin Import** del file `prisma/migrations/<timestamp>_init/migration.sql`
+7. Restart Node app → test `https://radio.chaosroom.online/api/health`
+
+### Env vars (impostate nel pannello cPanel, NON in un file `.env`)
+
+| Nome | Valore |
+|---|---|
+| `DB_HOST` | `localhost` |
+| `DB_PORT` | `3306` |
+| `DB_USER` | `chaouaza_chaos_app` (con prefisso username cPanel) |
+| `DB_PASSWORD` | [password generata in STEP 1] |
+| `DB_NAME` | `chaouaza_chaos_radio` (con prefisso) |
+| `JWT_SECRET` | [64 byte hex random] |
+| `PORT` | `3001` |
+| `NODE_ENV` | `production` |
+
+## Caricare brani
+
+Il backend è deployato ma il DB è vuoto. Per aggiungere brani:
+
+1. **Upload MP3** via File Manager in `/home/chaouaza/radio.chaosroom.online/chaos-web-player/backend/private/audio/`
+2. **Insert record** via phpMyAdmin nella tabella `tracks`:
+   - `title` = Nome brano
+   - `artist` = Artista
+   - `file_path` = `/home/chaouaza/radio.chaosroom.online/chaos-web-player/backend/private/audio/nome.mp3`
+   - `cover_path` = NULL (o path alla cover JPG in `private/covers/`)
+3. I brani appaiono automaticamente in `/api/tracks` e quindi nel Player/Playlist
+
+Le cover sono opzionali ma supportate: upload in `private/covers/`, imposta `cover_path` nel record.
+
+## Trappole note (le "lesson learned" del deploy)
+
+Queste sono state tutte risolte e documentate per evitare di rifare gli stessi errori:
+
+1. **Prisma 7 WASM binary non si scarica su Stellar shared**: il `prisma generate` durante `npm install` fallisce perché Stellar blocca il download dei binari WASM. Fix: rimosso `postinstall: prisma generate`, committato `generated/prisma/` direttamente nel repo. La build iniziale (sul laptop dev) genera il client, poi viene committato.
+
+2. **Passenger cache + `dotenv`**: cPanel Application Manager cachia il vecchio file JS in memoria anche dopo Stop/Start. L'errore `Cannot find package 'dotenv'` persisteva finché non si è aggiunto `dotenv` di nuovo a `dependencies` (workaround). Lezione: **MAI usare `import "dotenv/config"` su cPanel shared**. Le env vars vanno solo nel pannello Environment Variables.
+
+3. **`VITE_API_URL` hardcoded in build**: `.env.local` (dev) ha priorità su `.env.production` in Vite. Se `.env.local` ha `http://localhost:3001/api`, la build di produzione punterà a localhost → 404. Fix: `.env.local` vuoto (commentato), `.env.production` vuoto → build usa default `/api` (relativo). **Ogni volta che modifichi `.env.local`, rebuilda il frontend.**
+
+4. **Dopo `git push`, aspettare 30+ secondi prima di testare** (cPanel Passenger ha cache aggressiva). Usa `curl -s https://radio.chaosroom.online/api/debug` per verificare che il nuovo codice sia in esecuzione.
+
+5. **`.cpanel.yml` viene eseguito automaticamente da cPanel Git Version Control** al pull. Crea le cartelle `private/`, installa deps, e fa `touch tmp/restart.txt` per restart Passenger.
 
 ## Script utili
 
 | Path       | Script       | Azione |
 |------------|--------------|--------|
-| `backend/` | `npm run dev` | nodemon + tsx su 3001 (WSL) |
-| `backend/` | `npm start` | tsx in produzione (compatibile Node 20+ e 22+) |
+| `backend/` | `npm run dev` | `tsx` su 3001 (WSL, dev) |
+| `backend/` | `npm start` | `tsx src/index.js` in produzione (Node 20+ e 22+) |
 | `backend/` | `npm run prisma:studio` | GUI Prisma per ispezionare il DB |
-| `frontend/`| `npm run dev` | Vite dev server su 5173 |
-| `frontend/`| `npm run build` | build produzione in `dist/` |
-| `frontend/`| `node scripts/generate-icons.mjs` | rigenera PWA icons |
+| `frontend/`| `npm run dev` | Vite dev server su 5173 (proxy `/api` a :3001) |
+| `frontend/`| `npm run build` | build produzione in `dist/` (committato) |
+| `frontend/`| `node scripts/generate-icons.mjs` | rigenera PWA icons da icon.svg |
 
 ## Note operative
 
-- Dopo un **riavvio di WSL**, l'IP cambia. Ri-eseguire il blocco `netsh portproxy` con il nuovo IP.
-- Lo script di avvio backend con `tsx` sopravvive alla bash shell e funziona su Node 20 LTS (Stellar) senza bisogno di `--experimental-strip-types`.
-- Tutti i secrets in `.env` sono in `.gitignore`.
-- Il DB di sviluppo (WSL) ha `caching_sha2_password` sostituito con `mysql_native_password` per compatibilità con il driver MariaDB.
+- **Dopo un riavvio di WSL**, l'IP cambia. Ri-eseguire il blocco `netsh portproxy` con il nuovo IP.
+- **Lo script di avvio backend con `tsx`** funziona sia su Node 20 LTS (Stellar prod) che su Node 22 (WSL dev). Esegue i `.ts` del client Prisma senza bisogno di flag.
+- **Tutti i secrets in `.env` (dev locale) sono in `.gitignore`.** In produzione le env vars sono solo nel pannello cPanel.
+- **Il DB di sviluppo (WSL) ha `caching_sha2_password` sostituito con `mysql_native_password`** per compatibilità con il driver MariaDB.
+- **`dotenv` resta in `dependencies` del backend** (workaround Passenger cache) finché non si migra a un host con SSH/container (es. Render, Fly.io).
 
 ## Riferimenti
 
 - Piano dettagliato: [`plans/chaos-radio-player.md`](./plans/chaos-radio-player.md)
 - README backend: [`backend/README.md`](./backend/README.md)
 - Guida deploy: [`deploy/DEPLOY.md`](./deploy/DEPLOY.md)
+- Live: [https://radio.chaosroom.online](https://radio.chaosroom.online)

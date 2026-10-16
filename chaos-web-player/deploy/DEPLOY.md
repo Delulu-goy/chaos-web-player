@@ -339,6 +339,63 @@ Stellar ha limiti RAM. Se `npm run build` esce con OOM, prova a limitare i worke
 
 ---
 
+## Troubleshooting post-deploy reale (lesson learned)
+
+Queste sono le 3 trappole che ho incontrato deployando per la prima volta. Sono tutte risolte e documentate per evitare di rifarle.
+
+### 1. Errore `Cannot find package 'dotenv'` persiste dopo `npm install`
+
+**Sintomo**: lo `stderr.log` mostra `Cannot find package 'dotenv' imported from ...src/index.js` anche dopo `Run NPM Install` nel pannello cPanel.
+
+**Causa**: cPanel Application Manager usa `npm install --production` di default, che salta le `devDependencies`. Anche dopo aver spostato `dotenv` in `dependencies`, la cache di Passenger tiene in memoria il vecchio file JS. Restart e Stop/Start non ricaricano il file.
+
+**Fix (workaround)**: 
+1. Tieni `dotenv` in `dependencies` (non `devDependencies`)
+2. NON rimuoverlo anche se il codice non lo usa più (vedi punto 2 per il fix vero)
+3. Verifica che il nuovo codice sia caricato: aggiungi una riga `console.log` con marker univoco come prima riga di `src/index.js`. Dopo restart, cerca la stringa in stderr.log
+
+**Fix vero** (richiede migrazione a host con SSH): rimuovi `dotenv` da `src/index.js` e gestisci env vars solo via pannello cPanel o process manager. Su Stellar shared non è possibile farlo in modo affidabile.
+
+### 2. Frontend fa richieste a `http://localhost:3001/api/...` invece di `/api/...`
+
+**Sintomo**: Console browser mostra:
+```
+Access to fetch at 'http://localhost:3001/api/auth/me' from origin 'https://radio.chaosroom.online' has been blocked by CORS policy
+GET http://localhost:3001/api/auth/me net::ERR_FAILED
+```
+
+**Causa**: il file `chaos-web-player/frontend/.env.local` ha `VITE_API_URL=http://localhost:3001/api` (impostato per dev). Vite dà priorità a `.env.local` su `.env.production`, quindi la build di produzione ha baked-in l'URL di dev.
+
+**Fix**:
+1. Svuota `chaos-web-player/frontend/.env.local` (o commenta `VITE_API_URL`)
+2. Svuota `chaos-web-player/frontend/.env.production` (anche se non c'è, crealo vuoto)
+3. Rebuild il frontend: `cd chaos-web-player/frontend && npm run build`
+4. Verifica che il dist NON contenga `localhost:3001`: `grep -r "localhost:3001" chaos-web-player/frontend/dist/`
+5. Commit + push + pull su cPanel
+
+**Lezione**: **OGNI volta** che modifichi `.env.local`, devi ribuildare il frontend. E `.env.local` non dovrebbe MAI avere un URL assoluto di produzione (solo `localhost:*` per dev).
+
+### 3. `stderr.log` non si aggiorna dopo restart, stesso errore vecchio
+
+**Sintomo**: dopo Stop + Start + Run NPM Install, lo `stderr.log` mostra ancora gli stessi errori di ore fa.
+
+**Causa**: Phusion Passenger (su cPanel Stellar) ha una **cache aggressiva** del file JS. Anche se `node_modules` viene aggiornato e il file sorgente è cambiato, Passenger non ricarica il processo Node finché non vede `tmp/restart.txt` nella **application root** (cartella del backend).
+
+**Fix**:
+1. Verifica che `.cpanel.yml` abbia `touch $SOURCE_ROOT/backend/tmp/restart.txt` alla fine
+2. Verifica che la cartella `tmp/` esiste nel backend dopo il deploy
+3. Se Passenger ancora non riavvia: cambia la versione Node nel pannello Setup Node.js App → forza distruzione e ricreazione del nodevenv → ricostruisce tutto
+
+**Diagnostica rapida** per capire se il nuovo codice sta girando:
+```bash
+curl -s https://radio.chaosroom.online/api/debug
+```
+Restituisce `pid`, `node`, env vars. Se il `pid` cambia tra due restart, Passenger sta riavviando. Se vedi il marker `console.log` in stderr.log, il nuovo codice è caricato.
+
+---
+
+---
+
 # Alternative
 
 ## GitHub Actions (CI/CD vero)
