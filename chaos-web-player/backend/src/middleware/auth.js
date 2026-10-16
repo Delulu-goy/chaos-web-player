@@ -20,6 +20,11 @@ export function requireAuth(req, res, next) {
     return res.status(401).json({ error: "unauthorized" });
   }
 
-  req.user = { id: payload.userId, email: payload.email };
+  req.user = {
+    id: payload.userId,
+    email: payload.email,
+    displayName: payload.displayName ?? undefined,
+    createdAt: payload.createdAt ?? undefined,
+  };
   next();
 }

@@ -23,6 +23,10 @@ interface AuthState {
   clearError: () => void;
 }
 
+// Promise cache: garantisce una sola chiamata /auth/me anche se più
+// componenti montano in contemporanea (es. App + ProtectedRoute).
+let hydrateInFlight: Promise<void> | null = null;
+
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isLoading: false,
@@ -30,23 +34,32 @@ export const useAuthStore = create<AuthState>((set) => ({
   error: null,
 
   hydrate: async () => {
+    // Deduplica: più componenti chiamano hydrate() al boot.
+    // Se un'invocazione è già in corso, riusa la sua promise.
+    if (hydrateInFlight) return hydrateInFlight;
+
     set({ isLoading: true });
-    try {
-      const { user } = await api.get<AuthResponse>("/auth/me");
-      set({ user, isLoading: false, isInitialized: true });
-    } catch (err) {
-      // 401 è atteso quando non c'è sessione: è uno stato normale, non errore
-      if (err instanceof ApiError && err.status === 401) {
-        set({ user: null, isLoading: false, isInitialized: true, error: null });
-      } else {
+    hydrateInFlight = (async () => {
+      try {
+        const { user } = await api.get<AuthResponse>("/auth/me");
+        set({ user, isLoading: false, isInitialized: true });
+      } catch (err) {
+        // 401 (nessuna sessione) e 429 (rate limit) sono entrambi stati
+        // "non loggato" dal punto di vista utente: nessun errore visibile.
+        const isExpected =
+          err instanceof ApiError && (err.status === 401 || err.status === 429);
         set({
           user: null,
           isLoading: false,
           isInitialized: true,
-          error: "Impossibile verificare la sessione",
+          error: isExpected ? null : "Impossibile verificare la sessione",
         });
+      } finally {
+        hydrateInFlight = null;
       }
-    }
+    })();
+
+    return hydrateInFlight;
   },
 
   login: async (email, password) => {

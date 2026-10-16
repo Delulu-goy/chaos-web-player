@@ -4,8 +4,8 @@
 // In locale (.env) si possono caricare con `node --env-file=.env ...`.
 
 // MARKER per verificare che Passenger abbia ricaricato il file
-console.log("[chaos-radio] Boot v2026-10-12-FINAL-FIX pid=" + process.pid + " node=" + process.version);
-
+// (stampato DOPO gli import, per evitare falsi "non ho ricaricato" se un
+// import sincrono fallisce prima del log)
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
@@ -13,7 +13,6 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import helmet from "helmet";
 
-import { authRateLimit } from "./middleware/rateLimit.js";
 import { errorHandler } from "./middleware/error.js";
 
 import authRoutes from "./routes/auth.routes.js";
@@ -25,7 +24,6 @@ import notificationsRoutes from "./routes/notifications.routes.js";
 const app = express();
 const PORT = parseInt(process.env.PORT ?? "3001", 10);
 
-// MARKER per verificare che Passenger abbia ricaricato il file
 console.log("[chaos-radio] Boot v2026-10-12-FINAL-FIX pid=" + process.pid + " node=" + process.version);
 
 // Debug endpoint: ci dice esattamente cosa sta girando
@@ -81,8 +79,9 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// Auth routes — login/register protetti da rate limit
-app.use("/api/auth", authRateLimit, authRoutes);
+// Auth routes — il rate limit è applicato per-route in auth.routes.js
+// (solo su /login e /register, NON su /me e /logout, altrimenti hydrate rompe la sessione)
+app.use("/api/auth", authRoutes);
 
 // Rotte protette
 app.use("/api/tracks", tracksRoutes);

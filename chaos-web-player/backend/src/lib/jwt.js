@@ -13,7 +13,7 @@ if (!SECRET) {
 
 /**
  * Genera un JWT firmato HS256.
- * @param {{ userId: number, email: string }} payload
+ * @param {{ userId: number, email: string, displayName?: string|null, createdAt?: string }} payload
  * @returns {string} token
  */
 export function signToken(payload) {
@@ -24,15 +24,42 @@ export function signToken(payload) {
 }
 
 /**
- * Verifica e decodifica un JWT. Ritorna null se invalido/scaduto.
+ * Verifica e decodifica un JWT. Ritorna null se invalido/scaduto o
+ * se il payload non ha la forma attesa.
  * @param {string} token
- * @returns {{ userId: number, email: string, iat: number, exp: number } | null}
+ * @returns {{ userId: number, email: string, displayName?: string|null, createdAt?: string, iat: number, exp: number } | null}
  */
 export function verifyToken(token) {
   if (!token) return null;
+  let payload;
   try {
-    return jwt.verify(token, SECRET, { algorithms: ["HS256"] });
+    payload = jwt.verify(token, SECRET, { algorithms: ["HS256"] });
   } catch {
     return null;
   }
+
+  // Validazione minima: protezione da token malformati / di altre app
+  // che condividono lo stesso secret, o corrotti dopo un cambio di schema.
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    typeof payload.userId !== "number" ||
+    typeof payload.email !== "string"
+  ) {
+    return null;
+  }
+
+  // Campi opzionali ma, se presenti, devono avere il tipo giusto.
+  if (
+    payload.displayName !== undefined &&
+    payload.displayName !== null &&
+    typeof payload.displayName !== "string"
+  ) {
+    return null;
+  }
+  if (payload.createdAt !== undefined && typeof payload.createdAt !== "string") {
+    return null;
+  }
+
+  return payload;
 }

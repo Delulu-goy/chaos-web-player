@@ -9,6 +9,7 @@ import bcrypt from "bcrypt";
 import prisma from "../db.js";
 import { signToken } from "../lib/jwt.js";
 import { requireAuth } from "../middleware/auth.js";
+import { authRateLimit } from "../middleware/rateLimit.js";
 import { HttpError } from "../middleware/error.js";
 
 const router = Router();
@@ -46,7 +47,7 @@ function publicUser(user) {
 }
 
 // ── POST /api/auth/register ────────────────────────────────────────
-router.post("/register", async (req, res, next) => {
+router.post("/register", authRateLimit, async (req, res, next) => {
   try {
     const { email, password, displayName } = req.body ?? {};
 
@@ -70,7 +71,12 @@ router.post("/register", async (req, res, next) => {
       },
     });
 
-    const token = signToken({ userId: user.id, email: user.email });
+    const token = signToken({
+      userId: user.id,
+      email: user.email,
+      displayName: user.displayName,
+      createdAt: user.createdAt.toISOString(),
+    });
     setAuthCookie(res, token);
 
     res.status(201).json({ user: publicUser(user) });
@@ -80,7 +86,7 @@ router.post("/register", async (req, res, next) => {
 });
 
 // ── POST /api/auth/login ────────────────────────────────────────────
-router.post("/login", async (req, res, next) => {
+router.post("/login", authRateLimit, async (req, res, next) => {
   try {
     const { email, password } = req.body ?? {};
 
@@ -101,7 +107,12 @@ router.post("/login", async (req, res, next) => {
       throw new HttpError(401, "unauthorized");
     }
 
-    const token = signToken({ userId: found.id, email: found.email });
+    const token = signToken({
+      userId: found.id,
+      email: found.email,
+      displayName: found.displayName,
+      createdAt: found.createdAt.toISOString(),
+    });
     setAuthCookie(res, token);
 
     res.json({ user: publicUser(found) });
@@ -117,11 +128,22 @@ router.post("/logout", requireAuth, (req, res) => {
 });
 
 // ── GET /api/auth/me ────────────────────────────────────────────────
+// Stateless: legge tutto dal JWT. Nessuna query DB → latenza minima e
+// nessun rischio "sessione rotta" per problemi transienti di Prisma.
+// Se il JWT è stato emesso prima del fix (manca displayName/createdAt),
+// fa una sola query e arricchisce la risposta.
 router.get("/me", requireAuth, async (req, res, next) => {
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
-    });
+    const { id, email, displayName, createdAt } = req.user;
+
+    if (displayName !== undefined && createdAt !== undefined) {
+      return res.json({
+        user: { id, email, displayName: displayName ?? null, createdAt },
+      });
+    }
+
+    // Fallback per token legacy
+    const user = await prisma.user.findUnique({ where: { id } });
     if (!user) {
       throw new HttpError(401, "unauthorized");
     }
