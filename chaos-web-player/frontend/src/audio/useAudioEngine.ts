@@ -4,6 +4,7 @@
 
 import { useEffect } from "react";
 import { usePlayerStore } from "../store/playerStore";
+import { toast } from "../store/toastStore";
 
 const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? "/api";
 
@@ -114,7 +115,17 @@ function useSingletonAudio(): HTMLAudioElement | null {
     };
     const onPause = () => usePlayerStore.getState().setPlaying(false);
     const onPlay = () => usePlayerStore.getState().setPlaying(true);
-    const onError = () => usePlayerStore.getState().setPlaying(false);
+    const onError = () => {
+      // Errore riproduzione (rete, formato non supportato, 401, 404, ecc.)
+      usePlayerStore.getState().setPlaying(false);
+      // Messaggio specifico per errori di rete
+      const code = audioEl?.error?.code;
+      const msg =
+        code === MediaError.MEDIA_ERR_NETWORK
+          ? "Errore di rete durante la riproduzione."
+          : "Impossibile riprodurre il brano.";
+      toast.error(msg);
+    };
 
     audio.addEventListener("timeupdate", onTimeUpdate);
     audio.addEventListener("ended", onEnded);

@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { api } from "../lib/api";
+import { toast } from "./toastStore";
 import type { NotificationItem } from "../types/api";
 
 interface NotificationsState {
@@ -46,6 +47,7 @@ export const useNotificationsStore = create<NotificationsState>(
             n.id === id ? { ...n, read: false } : n,
           ),
         });
+        toast.error("Impossibile aggiornare la notifica. Riprova.");
       }
     },
 

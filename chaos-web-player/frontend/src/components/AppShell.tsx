@@ -24,7 +24,7 @@ export default function AppShell({
     <div className="flex h-screen w-full flex-col bg-black font-mono text-white">
       {showHeader && <Header />}
       <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto flex max-w-md flex-col px-4 pb-6 pt-6 sm:max-w-lg sm:px-6">
+        <div className="mx-auto flex max-w-md flex-col px-4 pb-content-safe pt-6 sm:max-w-lg sm:px-6">
           {children}
         </div>
       </main>

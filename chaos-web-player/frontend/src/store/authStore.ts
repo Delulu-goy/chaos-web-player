@@ -2,7 +2,8 @@
 // Gestisce: user loggato, login, register, logout, hydrate.
 
 import { create } from "zustand";
-import { api, ApiError } from "../lib/api";
+import { api, ApiError, AUTH_EXPIRED_EVENT } from "../lib/api";
+import { toast } from "./toastStore";
 import type { AuthResponse, User } from "../types/api";
 
 interface AuthState {
@@ -26,6 +27,21 @@ interface AuthState {
 // Promise cache: garantisce una sola chiamata /auth/me anche se più
 // componenti montano in contemporanea (es. App + ProtectedRoute).
 let hydrateInFlight: Promise<void> | null = null;
+
+// Listener globale: ogni 401 non-pubblico dal client API triggera logout
+// silenzioso + toast informativo. Mounted una sola volta al primo import.
+if (typeof window !== "undefined" && !(window as { __chaosAuthExpiredBound?: boolean }).__chaosAuthExpiredBound) {
+  (window as { __chaosAuthExpiredBound?: boolean }).__chaosAuthExpiredBound = true;
+  window.addEventListener(AUTH_EXPIRED_EVENT, () => {
+    const state = useAuthStore.getState();
+    if (state.user) {
+      // Logout silenzioso (non serve un altro POST /auth/logout: il cookie è già
+      // morto lato server se il 401 è tornato). Pulisci comunque lo store.
+      useAuthStore.setState({ user: null, error: null });
+      toast.info("Sessione scaduta. Effettua di nuovo l'accesso.");
+    }
+  });
+}
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
@@ -70,6 +86,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         password,
       });
       set({ user, isLoading: false });
+      toast.success(`Benvenuto, ${user.displayName || user.email}!`);
     } catch (err) {
       const message =
         err instanceof ApiError && err.status === 401
@@ -78,6 +95,7 @@ export const useAuthStore = create<AuthState>((set) => ({
             ? "Troppi tentativi, riprova più tardi"
             : "Errore di login";
       set({ error: message, isLoading: false });
+      toast.error(message);
       throw err;
     }
   },
@@ -91,6 +109,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         displayName,
       });
       set({ user, isLoading: false });
+      toast.success("Account creato con successo!");
     } catch (err) {
       const message =
         err instanceof ApiError && err.status === 409
@@ -99,6 +118,7 @@ export const useAuthStore = create<AuthState>((set) => ({
             ? "Controlla i campi inseriti"
             : "Errore di registrazione";
       set({ error: message, isLoading: false });
+      toast.error(message);
       throw err;
     }
   },
@@ -110,6 +130,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       // ignora: stiamo facendo logout, qualunque errore va ignorato
     } finally {
       set({ user: null, error: null });
+      toast.info("Disconnesso.");
     }
   },
 

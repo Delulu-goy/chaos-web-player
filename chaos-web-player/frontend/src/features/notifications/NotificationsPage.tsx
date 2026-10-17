@@ -7,7 +7,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "../../components/AppShell";
 import type { TabKey } from "../../components/BottomNav";
-import Spinner from "../../components/ui/Spinner";
+import LoadingView from "../../components/ui/LoadingView";
 import EmptyState from "../../components/ui/EmptyState";
 import NotificationItem from "../../components/NotificationItem";
 import { useNotificationsStore } from "../../store/notificationsStore";
@@ -31,17 +31,15 @@ export default function NotificationsPage() {
     <AppShell activeTab="notifications" onTabChange={onTabChange}>
       <h1 className="text-3xl font-bold tracking-tight">UPDATES</h1>
 
-      {isLoading && items.length === 0 && (
-        <div className="mt-8 flex justify-center">
-          <Spinner />
-        </div>
-      )}
+      {isLoading && items.length === 0 && <LoadingView />}
 
       {error && items.length === 0 && (
         <div className="mt-8">
           <EmptyState
+            variant="error"
             title="Errore"
             message={error}
+            action={{ label: "Riprova", onClick: () => void fetchNotifications() }}
           />
         </div>
       )}
@@ -49,6 +47,7 @@ export default function NotificationsPage() {
       {!isLoading && !error && items.length === 0 && (
         <div className="mt-8">
           <EmptyState
+            variant="info"
             title="Nessuna notifica"
             message="Non ci sono aggiornamenti al momento."
           />

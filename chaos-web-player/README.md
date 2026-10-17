@@ -33,7 +33,7 @@ chaos-web-player/
 | 5.3 — Favorites | ✅ | "USER FAVORITES" con riuso TrackListItem + useFavoritesStore |
 | 5.4 — Notifications | ✅ | "UPDATES" con optimistic mark-read via useNotificationsStore |
 | 5.5 — Pirate Day | ✅ | Countdown live + progress bar + curator + descrizione con **highlight** |
-| 6 — PWA & polish | 🟡 parziale | PWA OK + Media Session, polish (toast, errori) da completare |
+| 6 — PWA & polish | ✅ | Toast/snackbar globale, LoadingView consistente, EmptyState con varianti, safe-area iOS, auto-logout su 401, feedback errori rete/audio |
 | 7 — Deploy | ✅ | **Live su radio.chaosroom.online** |
 
 ## Quickstart (sviluppo locale Windows + WSL)

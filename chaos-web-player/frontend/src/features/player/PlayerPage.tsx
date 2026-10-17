@@ -2,7 +2,7 @@
 // Refactor di ChaosRadioPlayer.jsx con audio reale (useAudioEngine) + playerStore.
 // Layout fedele all'originale: cover, title, meta, waveform (clickable), time, controls, queue.
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Share2,
@@ -14,15 +14,17 @@ import {
   Volume2,
   VolumeX,
   ChevronDown,
+  LogOut,
 } from "lucide-react";
 import AppShell from "../../components/AppShell";
 import type { TabKey } from "../../components/BottomNav";
-import Spinner from "../../components/ui/Spinner";
+import LoadingView from "../../components/ui/LoadingView";
 import EmptyState from "../../components/ui/EmptyState";
 import FavoriteButton from "../../components/FavoriteButton";
 import TrackListItem from "../../components/TrackListItem";
 import { usePlayerStore } from "../../store/playerStore";
 import { useNotificationsStore } from "../../store/notificationsStore";
+import { useAuthStore } from "../../store/authStore";
 import { api, ApiError } from "../../lib/api";
 import { formatTime } from "../../lib/format";
 import { seekAudio } from "../../audio/useAudioEngine";
@@ -64,13 +66,17 @@ export default function PlayerPage() {
   // Recupera i brani al primo mount
   const [tracks, setTracks] = useState<Track[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  const logout = useAuthStore((s) => s.logout);
+
+  const loadTracks = () => {
+    setError(null);
+    setTracks(null);
     api
       .get<Track[]>("/tracks")
       .then((data) => {
-        if (cancelled) return;
         setTracks(data);
         // Auto-play del primo brano se la coda è vuota
         if (data.length > 0 && !usePlayerStore.getState().currentTrack) {
@@ -78,17 +84,30 @@ export default function PlayerPage() {
         }
       })
       .catch((err) => {
-        if (cancelled) return;
         setError(
           err instanceof ApiError
             ? `Impossibile caricare i brani (${err.status})`
             : "Errore di rete",
         );
       });
-    return () => {
-      cancelled = true;
+  };
+
+  useEffect(() => {
+    loadTracks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Chiudi menu contestuale al click fuori
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
     };
-  }, [setQueue]);
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [menuOpen]);
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -107,6 +126,12 @@ export default function PlayerPage() {
     }
   };
 
+  const handleLogout = async () => {
+    setMenuOpen(false);
+    await logout();
+    navigate("/login", { replace: true });
+  };
+
   // Stato caricamento
   if (tracks === null && !error) {
     return (
@@ -115,9 +140,7 @@ export default function PlayerPage() {
         onTabChange={onTabChange}
         hasNotifications={unread > 0}
       >
-        <div className="flex justify-center py-20">
-          <Spinner />
-        </div>
+        <LoadingView />
       </AppShell>
     );
   }
@@ -129,7 +152,12 @@ export default function PlayerPage() {
         onTabChange={onTabChange}
         hasNotifications={unread > 0}
       >
-        <EmptyState title="Errore" message={error} />
+        <EmptyState
+          variant="error"
+          title="Errore"
+          message={error}
+          action={{ label: "Riprova", onClick: loadTracks }}
+        />
       </AppShell>
     );
   }
@@ -140,8 +168,21 @@ export default function PlayerPage() {
         activeTab="player"
         onTabChange={onTabChange}
         hasNotifications={unread > 0}
+        showHeader={false}
       >
+        <div className="flex items-center justify-between pb-2 pt-[env(safe-area-inset-top,0px)]">
+          <div className="w-9" />
+          <span className="text-lg font-bold tracking-tight">CHAOS RADIO</span>
+          <button
+            onClick={handleLogout}
+            aria-label="Esci"
+            className="rounded p-2 text-white/40 transition-opacity hover:opacity-100 hover:text-white"
+          >
+            <LogOut size={18} />
+          </button>
+        </div>
         <EmptyState
+          variant="empty"
           title="Nessun brano"
           message="L'admin non ha ancora caricato MP3. Torna più tardi."
         />
@@ -167,7 +208,43 @@ export default function PlayerPage() {
       activeTab="player"
       onTabChange={onTabChange}
       hasNotifications={unread > 0}
+      showHeader={false}
     >
+      {/* Top bar minimale sul Player: brand + menu logout */}
+      <div className="mb-6 flex items-center justify-between">
+        <span className="text-lg font-bold tracking-tight">CHAOS RADIO</span>
+        <div ref={menuRef} className="relative">
+          <button
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-label="Menu utente"
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            className="rounded p-2 text-white/60 transition-opacity hover:opacity-100 hover:text-white"
+          >
+            <span
+              className="inline-block h-2 w-2 rounded-full"
+              style={{ backgroundColor: "#FF5A1F" }}
+              aria-hidden="true"
+            />
+          </button>
+          {menuOpen && (
+            <div
+              role="menu"
+              className="absolute right-0 top-full z-40 mt-2 min-w-[160px] rounded-md border border-white/10 bg-neutral-950 py-1 shadow-lg"
+            >
+              <button
+                role="menuitem"
+                onClick={handleLogout}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-white/90 transition-colors hover:bg-white/5"
+              >
+                <LogOut size={16} aria-hidden="true" />
+                Esci
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
       <PlayerView
         track={effectiveTrack}
         coverUrl={coverUrl}

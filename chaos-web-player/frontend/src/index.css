@@ -41,6 +41,15 @@
   * {
     -webkit-tap-highlight-color: transparent;
   }
+
+  /* Safe area iOS notch / gesture bar.
+     Header e BottomNav devono rispettare questi inset in PWA standalone.
+     Applichiamo l'inset direttamente a quegli elementi, non a html, per non
+     rompere il layout del body / scroll. */
+  html,
+  body {
+    overscroll-behavior-y: none; /* evita pull-to-refresh in PWA */
+  }
 }
 
 @layer utilities {
@@ -62,5 +71,16 @@
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 3;
+  }
+
+  /* Padding-bottom per il contenuto scrollabile: tiene conto della BottomNav (~56px) +
+     safe-area iOS. Da usare al posto di `pb-6` sul main. */
+  .pb-content-safe {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 5rem);
+  }
+
+  /* Padding-top per il contenuto sopra la BottomNav (gestito dallo scroll) */
+  .pt-content-safe {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 1.5rem);
   }
 }

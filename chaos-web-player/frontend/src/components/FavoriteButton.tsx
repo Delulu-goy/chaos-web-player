@@ -4,6 +4,7 @@ import { Heart } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../lib/api";
 import { useAuthStore } from "../store/authStore";
+import { toast } from "../store/toastStore";
 
 interface FavoriteButtonProps {
   trackId: number;
@@ -42,7 +43,7 @@ export default function FavoriteButton({
     } catch (err) {
       setLiked(!next); // rollback
       if (err instanceof ApiError) {
-        // Silenzioso: la UI torna allo stato precedente
+        toast.error("Impossibile aggiornare i preferiti. Riprova.");
         console.warn(`Favorite[${trackId}] toggle failed:`, err.code);
       }
     } finally {

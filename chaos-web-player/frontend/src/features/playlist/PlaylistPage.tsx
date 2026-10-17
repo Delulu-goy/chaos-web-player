@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "../../components/AppShell";
 import type { TabKey } from "../../components/BottomNav";
-import Spinner from "../../components/ui/Spinner";
+import LoadingView from "../../components/ui/LoadingView";
 import EmptyState from "../../components/ui/EmptyState";
 import TrackListItem from "../../components/TrackListItem";
 import { usePlayerStore } from "../../store/playerStore";
@@ -26,29 +26,25 @@ export default function PlaylistPage() {
   const fetchFavorites = useFavoritesStore((s) => s.fetch);
 
   // Fetch brani
-  useEffect(() => {
-    let cancelled = false;
+  const loadTracks = () => {
+    setError(null);
+    setTracks(null);
     api
       .get<Track[]>("/tracks")
       .then((data) => {
-        if (cancelled) return;
         setTracks(data);
       })
       .catch((err) => {
-        if (cancelled) return;
         setError(
           err instanceof ApiError
             ? `Impossibile caricare la playlist (${err.status})`
             : "Errore di rete",
         );
       });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  };
 
-  // Fetch preferiti per sapere quali sono "liked" nella lista
   useEffect(() => {
+    loadTracks();
     fetchFavorites();
   }, [fetchFavorites]);
 
@@ -66,19 +62,25 @@ export default function PlaylistPage() {
     >
       <h1 className="text-3xl font-bold tracking-tight">SHOW LIST</h1>
 
-      {tracks === null && !error && (
-        <div className="mt-8 flex justify-center">
-          <Spinner />
+      {tracks === null && !error && <LoadingView />}
+
+      {error && (
+        <div className="mt-8">
+          <EmptyState
+            variant="error"
+            title="Errore"
+            message={error}
+            action={{ label: "Riprova", onClick: loadTracks }}
+          />
         </div>
       )}
-
-      {error && <EmptyState title="Errore" message={error} />}
 
       {tracks && tracks.length === 0 && (
         <div className="mt-8">
           <EmptyState
+            variant="empty"
             title="Playlist vuota"
-            message="Nessun brano disponibile al momento."
+            message="Nessun brano disponibile al momento. Torna più tardi."
           />
         </div>
       )}

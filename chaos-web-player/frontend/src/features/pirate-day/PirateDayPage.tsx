@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "../../components/AppShell";
 import type { TabKey } from "../../components/BottomNav";
-import Spinner from "../../components/ui/Spinner";
+import LoadingView from "../../components/ui/LoadingView";
 import EmptyState from "../../components/ui/EmptyState";
 import TrackListItem from "../../components/TrackListItem";
 import CuratorCard from "../../components/CuratorCard";
@@ -54,24 +54,24 @@ export default function PirateDayPage() {
 
   const [data, setData] = useState<PirateDayResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
 
   // Countdown aggiornato ogni secondo
   const [now, setNow] = useState(() => Date.now());
 
-  // Fetch playlist pirate-day corrente
-  useEffect(() => {
-    let cancelled = false;
+  const loadPlaylist = () => {
+    setError(null);
+    setNotFound(false);
+    setData(null);
     api
       .get<PirateDayResponse>("/playlists/pirate-day")
       .then((d) => {
-        if (cancelled) return;
         setData(d);
       })
       .catch((err) => {
-        if (cancelled) return;
         if (err instanceof ApiError && err.status === 404) {
           // Nessuna playlist attiva: non è un errore UX
-          setData(null);
+          setNotFound(true);
           return;
         }
         setError(
@@ -80,15 +80,13 @@ export default function PirateDayPage() {
             : "Errore di rete",
         );
       });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  };
 
-  // Pre-fetch preferiti per stato cuori nella lista
   useEffect(() => {
+    loadPlaylist();
     fetchFavorites();
-  }, [fetchFavorites]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Tick countdown
   useEffect(() => {
@@ -104,16 +102,15 @@ export default function PirateDayPage() {
   };
 
   // ─── Loading ────────────────────────────────────────────────────────
-  if (data === null && !error) {
+  if (!notFound && !error && !data) {
     return (
       <AppShell
         activeTab="pirate-day"
         onTabChange={onTabChange}
         hasNotifications={unread > 0}
       >
-        <div className="flex justify-center py-20">
-          <Spinner />
-        </div>
+        <h1 className="text-3xl font-bold tracking-tight">PIRATE DAY</h1>
+        <LoadingView />
       </AppShell>
     );
   }
@@ -125,13 +122,21 @@ export default function PirateDayPage() {
         onTabChange={onTabChange}
         hasNotifications={unread > 0}
       >
-        <EmptyState title="Errore" message={error} />
+        <h1 className="text-3xl font-bold tracking-tight">PIRATE DAY</h1>
+        <div className="mt-8">
+          <EmptyState
+            variant="error"
+            title="Errore"
+            message={error}
+            action={{ label: "Riprova", onClick: loadPlaylist }}
+          />
+        </div>
       </AppShell>
     );
   }
 
   // ─── Nessuna playlist pirate-day attiva ─────────────────────────────
-  if (!data) {
+  if (notFound || !data) {
     return (
       <AppShell
         activeTab="pirate-day"
@@ -141,6 +146,7 @@ export default function PirateDayPage() {
         <h1 className="text-3xl font-bold tracking-tight">PIRATE DAY</h1>
         <div className="mt-8">
           <EmptyState
+            variant="info"
             title="Nessuna playlist attiva"
             message="Torna più tardi: al momento Pirate Day non è in onda."
           />
@@ -215,6 +221,7 @@ export default function PirateDayPage() {
       {data.items.length === 0 ? (
         <div className="mt-12">
           <EmptyState
+            variant="empty"
             title="Playlist vuota"
             message="Il curatore non ha ancora aggiunto brani."
           />

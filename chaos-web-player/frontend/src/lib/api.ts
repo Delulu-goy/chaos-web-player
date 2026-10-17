@@ -4,8 +4,17 @@
 //  - credentials: 'include' per inviare il cookie httpOnly
 //  - Content-Type JSON di default
 //  - parsing errori standard dal backend ({ error, details })
+//  - handler 401 globale: se la sessione è scaduta, dispatch auth:expired event
+//    (l'auth store ascolta e fa logout, ProtectedRoute rimanda al login)
 
 const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? "/api";
+
+/**
+ * Event dispatched quando un 401 colpisce una chiamata auth-protected.
+ * L'authStore ascolta questo evento per fare logout silenzioso e far
+ * redirect al login senza aspettare il prossimo render.
+ */
+export const AUTH_EXPIRED_EVENT = "chaos:auth-expired";
 
 export class ApiError extends Error {
   status: number;
@@ -24,6 +33,13 @@ export class ApiError extends Error {
 type RequestInitWithJson = Omit<RequestInit, "body"> & {
   body?: unknown;
 };
+
+/** Endpoint pubblici che NON triggerano auth-expired su 401. */
+const PUBLIC_PATHS = ["/auth/me", "/auth/login", "/auth/register", "/auth/logout"];
+
+function isPublicPath(path: string): boolean {
+  return PUBLIC_PATHS.some((p) => path === p || path.startsWith(`${p}?`));
+}
 
 async function request<T>(
   method: string,
@@ -47,6 +63,13 @@ async function request<T>(
         ? (init.body as BodyInit | undefined)
         : JSON.stringify(init.body),
   });
+
+  // 401 globale: se non è un endpoint pubblico, dispatch evento
+  if (response.status === 401 && !isPublicPath(path)) {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT));
+    }
+  }
 
   if (response.status === 204) {
     return undefined as T;

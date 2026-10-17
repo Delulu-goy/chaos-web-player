@@ -31,7 +31,9 @@ export default function BottomNav({
   hasNotifications = false,
 }: BottomNavProps) {
   return (
-    <nav className="flex shrink-0 items-center justify-around border-t border-white/10 bg-black py-3">
+    <nav
+      className="flex shrink-0 items-center justify-around border-t border-white/10 bg-black pb-[env(safe-area-inset-bottom,0px)] pt-3"
+    >
       {NAV_ITEMS.map(({ key, label, icon: Icon }) => {
         const isActive = key === activeTab;
         const showBadge = key === "notifications" && hasNotifications;

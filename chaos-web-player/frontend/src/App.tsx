@@ -6,7 +6,9 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { useAuthStore } from "./store/authStore";
 import { useNotificationsStore } from "./store/notificationsStore";
 import { useAudioEngine } from "./audio/useAudioEngine";
+import { toast } from "./store/toastStore";
 import ProtectedRoute from "./components/ProtectedRoute";
+import ToastHost from "./components/ui/ToastHost";
 
 import LoginPage from "./features/auth/LoginPage";
 import RegisterPage from "./features/auth/RegisterPage";
@@ -76,6 +78,7 @@ export default function App() {
               {/* 404 */}
               <Route path="*" element={<NotFoundPage />} />
             </Routes>
+            <ToastHost />
           </NotifierMount>
         </AudioEngineMount>
       </AuthBootstrap>
@@ -112,6 +115,7 @@ function AudioEngineMount({ children }: { children: React.ReactNode }) {
 /**
  * Carica le notifiche dell'utente loggato. Polling leggero ogni 60s.
  * Refetch on focus per catturare nuove notifiche tornando sull'app.
+ * Monitora anche lo stato online/offline per dare feedback immediato via toast.
  */
 function NotifierMount({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user);
@@ -140,6 +144,19 @@ function NotifierMount({ children }: { children: React.ReactNode }) {
       window.removeEventListener("focus", onVisible);
     };
   }, [user, fetchNotifications, location.pathname]);
+
+  // Network status: toast quando si torna online o si va offline
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onOnline = () => toast.success("Connessione ripristinata.");
+    const onOffline = () => toast.error("Connessione persa. Operazioni offline.");
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
 
   return <>{children}</>;
 }

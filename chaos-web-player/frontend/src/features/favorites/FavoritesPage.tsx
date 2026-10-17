@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "../../components/AppShell";
 import type { TabKey } from "../../components/BottomNav";
-import Spinner from "../../components/ui/Spinner";
+import LoadingView from "../../components/ui/LoadingView";
 import EmptyState from "../../components/ui/EmptyState";
 import TrackListItem from "../../components/TrackListItem";
 import { usePlayerStore } from "../../store/playerStore";
@@ -27,28 +27,28 @@ export default function FavoritesPage() {
   const [tracks, setTracks] = useState<Track[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch dei preferiti dell'utente corrente
-  useEffect(() => {
-    let cancelled = false;
+  const loadFavorites = () => {
+    setError(null);
+    setTracks(null);
     fetchFavorites();
     api
       .get<Track[]>("/favorites")
       .then((data) => {
-        if (cancelled) return;
         setTracks(data);
       })
       .catch((err) => {
-        if (cancelled) return;
         setError(
           err instanceof ApiError
             ? `Impossibile caricare i preferiti (${err.status})`
             : "Errore di rete",
         );
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [fetchFavorites]);
+  };
+
+  useEffect(() => {
+    loadFavorites();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handlePlay = (track: Track) => {
     if (!tracks || tracks.length === 0) return;
@@ -64,17 +64,23 @@ export default function FavoritesPage() {
     >
       <h1 className="text-3xl font-bold tracking-tight">USER FAVORITES</h1>
 
-      {tracks === null && !error && (
-        <div className="mt-8 flex justify-center">
-          <Spinner />
+      {tracks === null && !error && <LoadingView />}
+
+      {error && (
+        <div className="mt-8">
+          <EmptyState
+            variant="error"
+            title="Errore"
+            message={error}
+            action={{ label: "Riprova", onClick: loadFavorites }}
+          />
         </div>
       )}
-
-      {error && <EmptyState title="Errore" message={error} />}
 
       {tracks && tracks.length === 0 && (
         <div className="mt-8">
           <EmptyState
+            variant="empty"
             title="Nessun preferito"
             message="Tocca il cuore su un brano per aggiungerlo ai preferiti."
           />
