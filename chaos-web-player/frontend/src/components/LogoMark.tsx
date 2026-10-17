@@ -1,4 +1,5 @@
 // Chaos Radio — Logo riusato in Header e Login (immagine chaos-logo.png)
+// Animazione di rotazione lenta continua per dare il senso "live radio".
 
 interface LogoMarkProps {
   size?: number;
@@ -13,7 +14,7 @@ export default function LogoMark({ size = 36, className = "" }: LogoMarkProps) {
       width={size}
       height={size}
       aria-hidden="true"
-      className={className}
+      className={`animate-spin-slow ${className}`}
     />
   );
 }

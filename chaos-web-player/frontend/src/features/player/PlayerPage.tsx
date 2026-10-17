@@ -2,7 +2,7 @@
 // Refactor di ChaosRadioPlayer.jsx con audio reale (useAudioEngine) + playerStore.
 // Layout fedele all'originale: cover, title, meta, waveform (clickable), time, controls, queue.
 
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Share2,
@@ -14,7 +14,6 @@ import {
   Volume2,
   VolumeX,
   ChevronDown,
-  LogOut,
 } from "lucide-react";
 import AppShell from "../../components/AppShell";
 import type { TabKey } from "../../components/BottomNav";
@@ -24,7 +23,6 @@ import FavoriteButton from "../../components/FavoriteButton";
 import TrackListItem from "../../components/TrackListItem";
 import { usePlayerStore } from "../../store/playerStore";
 import { useNotificationsStore } from "../../store/notificationsStore";
-import { useAuthStore } from "../../store/authStore";
 import { api, ApiError } from "../../lib/api";
 import { formatTime } from "../../lib/format";
 import { seekAudio } from "../../audio/useAudioEngine";
@@ -66,10 +64,6 @@ export default function PlayerPage() {
   // Recupera i brani al primo mount
   const [tracks, setTracks] = useState<Track[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  const logout = useAuthStore((s) => s.logout);
 
   const loadTracks = () => {
     setError(null);
@@ -97,18 +91,6 @@ export default function PlayerPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Chiudi menu contestuale al click fuori
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [menuOpen]);
-
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const ratio = (e.clientX - rect.left) / rect.width;
@@ -126,20 +108,10 @@ export default function PlayerPage() {
     }
   };
 
-  const handleLogout = async () => {
-    setMenuOpen(false);
-    await logout();
-    navigate("/login", { replace: true });
-  };
-
   // Stato caricamento
   if (tracks === null && !error) {
     return (
-      <AppShell
-        activeTab="player"
-        onTabChange={onTabChange}
-        hasNotifications={unread > 0}
-      >
+      <AppShell activeTab="player" onTabChange={onTabChange} hasNotifications={unread > 0}>
         <LoadingView />
       </AppShell>
     );
@@ -147,11 +119,7 @@ export default function PlayerPage() {
 
   if (error) {
     return (
-      <AppShell
-        activeTab="player"
-        onTabChange={onTabChange}
-        hasNotifications={unread > 0}
-      >
+      <AppShell activeTab="player" onTabChange={onTabChange} hasNotifications={unread > 0}>
         <EmptyState
           variant="error"
           title="Errore"
@@ -164,23 +132,7 @@ export default function PlayerPage() {
 
   if (!tracks || tracks.length === 0) {
     return (
-      <AppShell
-        activeTab="player"
-        onTabChange={onTabChange}
-        hasNotifications={unread > 0}
-        showHeader={false}
-      >
-        <div className="flex items-center justify-between pb-2 pt-[env(safe-area-inset-top,0px)]">
-          <div className="w-9" />
-          <span className="text-lg font-bold tracking-tight">CHAOS RADIO</span>
-          <button
-            onClick={handleLogout}
-            aria-label="Esci"
-            className="rounded p-2 text-white/40 transition-opacity hover:opacity-100 hover:text-white"
-          >
-            <LogOut size={18} />
-          </button>
-        </div>
+      <AppShell activeTab="player" onTabChange={onTabChange} hasNotifications={unread > 0}>
         <EmptyState
           variant="empty"
           title="Nessun brano"
@@ -204,47 +156,7 @@ export default function PlayerPage() {
   // (queueIndex logica gestita dentro useAudioEngine)
 
   return (
-    <AppShell
-      activeTab="player"
-      onTabChange={onTabChange}
-      hasNotifications={unread > 0}
-      showHeader={false}
-    >
-      {/* Top bar minimale sul Player: brand + menu logout */}
-      <div className="mb-6 flex items-center justify-between">
-        <span className="text-lg font-bold tracking-tight">CHAOS RADIO</span>
-        <div ref={menuRef} className="relative">
-          <button
-            onClick={() => setMenuOpen((v) => !v)}
-            aria-label="Menu utente"
-            aria-expanded={menuOpen}
-            aria-haspopup="menu"
-            className="rounded p-2 text-white/60 transition-opacity hover:opacity-100 hover:text-white"
-          >
-            <span
-              className="inline-block h-2 w-2 rounded-full"
-              style={{ backgroundColor: "#FF5A1F" }}
-              aria-hidden="true"
-            />
-          </button>
-          {menuOpen && (
-            <div
-              role="menu"
-              className="absolute right-0 top-full z-40 mt-2 min-w-[160px] rounded-md border border-white/10 bg-neutral-950 py-1 shadow-lg"
-            >
-              <button
-                role="menuitem"
-                onClick={handleLogout}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-white/90 transition-colors hover:bg-white/5"
-              >
-                <LogOut size={16} aria-hidden="true" />
-                Esci
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
+    <AppShell activeTab="player" onTabChange={onTabChange} hasNotifications={unread > 0}>
       <PlayerView
         track={effectiveTrack}
         coverUrl={coverUrl}

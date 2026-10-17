@@ -84,3 +84,27 @@
     padding-top: calc(env(safe-area-inset-top, 0px) + 1.5rem);
   }
 }
+
+@layer utilities {
+  /* Rotazione lenta continua: usata dal LogoMark per dare il senso "live radio".
+     Rispetta prefers-reduced-motion: l'utente che ha disabilitato le animazioni
+     non vede rotazione. */
+  .animate-spin-slow {
+    animation: spin-slow 12s linear infinite;
+  }
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin-slow {
+    animation: none;
+  }
+}

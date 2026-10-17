@@ -1,4 +1,5 @@
 // Chaos Radio — Bottom nav con 5 icone + badge notifiche
+// Layout simmetrico (py-3) + safe-area iOS aggiunta al padding-bottom via style inline.
 
 import {
   Play,
@@ -32,7 +33,11 @@ export default function BottomNav({
 }: BottomNavProps) {
   return (
     <nav
-      className="flex shrink-0 items-center justify-around border-t border-white/10 bg-black pb-[env(safe-area-inset-bottom,0px)] pt-3"
+      className="flex shrink-0 items-center justify-around border-t border-white/10 bg-black py-3"
+      style={{
+        // Padding-bottom = py-3 (12px) + safe-area iOS gesture bar
+        paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))",
+      }}
     >
       {NAV_ITEMS.map(({ key, label, icon: Icon }) => {
         const isActive = key === activeTab;
