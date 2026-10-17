@@ -21,7 +21,7 @@ export default function Header({ className = "" }: HeaderProps) {
       </div>
 
       <div
-        className="flex items-center gap-2 text-sm"
+        className="flex items-center gap-2 text-sm font-medium uppercase tracking-wider"
         style={{ color: "#FF5A1F" }}
         aria-label="In onda"
       >
@@ -29,7 +29,7 @@ export default function Header({ className = "" }: HeaderProps) {
           className="h-2 w-2 animate-pulse rounded-full"
           style={{ backgroundColor: "#FF5A1F" }}
         />
-        <span className="hidden sm:inline">on air</span>
+        <span>on air</span>
       </div>
     </header>
   );
