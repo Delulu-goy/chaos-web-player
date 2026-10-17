@@ -4,10 +4,22 @@ import jwt from "jsonwebtoken";
 
 const SECRET = process.env.JWT_SECRET;
 const EXPIRES_IN = "30d";
+const MIN_SECRET_LENGTH = 32;
 
 if (!SECRET) {
   throw new Error(
-    "JWT_SECRET non configurato. Aggiungi una stringa casuale di almeno 32 caratteri nel file .env"
+    "JWT_SECRET non configurato. Aggiungi una stringa casuale di almeno 32 caratteri nel file .env",
+  );
+}
+
+// Hardening: rifiuta secret troppo corti (vulnerabili a brute-force / dictionary).
+// 32 caratteri è il minimo per HS256 considerato sicuro (256 bit di entropia se generati
+// con un source crittografico). Genera un valore nuovo con:
+//   node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+if (SECRET.length < MIN_SECRET_LENGTH) {
+  throw new Error(
+    `JWT_SECRET troppo corto: ${SECRET.length} caratteri, richiesti almeno ${MIN_SECRET_LENGTH}. ` +
+      `Genera uno nuovo con: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`,
   );
 }
 

@@ -72,12 +72,15 @@ Dopo un riavvio di WSL, rieseguire il blocco con il nuovo `$wslIp`.
 |---|---|
 | `npm run dev` | `tsx` su `src/index.js` (dev, con `tsx` watch) |
 | `npm start` | `tsx src/index.js` (produzione) |
-| `npm run scan` | scansiona cartella MP3 (vedi `scripts/scan.js` — da implementare in Fase 2) |
-| `npm run seed` | popola DB con dati demo (vedi `scripts/seed.js` — da implementare in Fase 2) |
+| `npm run scan` | scansiona `private/audio/*.mp3`, estrae tag ID3 + cover, sincronizza `tracks` (vedi `scripts/scan.js`) |
+| `npm run seed` | popola DB con dati demo (admin, playlist show-list, playlist pirate-day-23, 5 notifiche) — vedi `scripts/seed.js` |
+| `npm run test:smoke` | E2E smoke test (auth, tracks, favorites, playlists, notifications). Punto 8 del piano. |
 | `npm run prisma:studio` | GUI Prisma per ispezionare il DB |
 | `npm run prisma:generate` | rigenera il client TypeScript in `generated/prisma/` |
 | `npm run prisma:migrate` | `prisma migrate dev` (crea/aggiorna migration) |
 | `npm run prisma:deploy` | `prisma migrate deploy` (per produzione) |
+
+Dettagli su ogni script: vedi `scripts/README.md`.
 
 ## Endpoint API
 
@@ -133,7 +136,11 @@ backend/
 │       ├── favorites.routes.js
 │       ├── playlists.routes.js
 │       └── notifications.routes.js
-└── scripts/                  # Fase 2: scan.js + seed.js (da implementare)
+└── scripts/                  # Fase 2+8: scan.js + seed.js + smoke-test.mjs
+    ├── _shared.mjs           # env loader, prisma factory, helpers
+    ├── scan.js               # cron: scansiona /private/audio, ID3 → tracks
+    ├── seed.js               # admin + playlist + notifiche demo
+    └── smoke-test.mjs        # E2E smoke test (Fase 8)
 ```
 
 ## Note su deploy produzione (Namecheap Stellar)
@@ -148,3 +155,43 @@ In produzione, il backend gira su cPanel Application Manager (Phusion Passenger)
 - **Prisma `migrate deploy`** NON può essere eseguito senza terminale: si applica la migration via phpMyAdmin import del file `prisma/migrations/<timestamp>_init/migration.sql`.
 
 Per dettagli sul deploy, vedi `../deploy/DEPLOY.md`.
+
+## Scanner audio (cron)
+
+L'admin carica MP3 via FTP/SFTP in `backend/private/audio/`. Lo script `npm run scan` legge i tag ID3, estrae cover art embedded, e popola la tabella `tracks`.
+
+In produzione Stellar, scheduleremo il job con **cPanel Cron Jobs**:
+
+```
+*/5 * * * * cd /home/USER/radio.chaosroom.online/repo/chaos-web-player/backend && /usr/bin/node --experimental-strip-types scripts/scan.js >> logs/scan.log 2>&1
+```
+
+> Sostituisci `USER` col tuo username cPanel. La cartella `logs/` viene creata automaticamente da `.cpanel.yml` ad ogni deploy.
+
+Env opzionali:
+- `MUSIC_DIR` (default: `private/audio`) — dove cercare i `.mp3`
+- `COVERS_DIR` (default: `private/covers`) — dove salvare le cover estratte
+- `SCAN_BATCH_SIZE` (default: 20) — file processati in parallelo per batch
+
+Lo script è idempotente: rieseguendolo non duplica righe (UPSERT su `file_path`) e cancella i track orfani (file presenti in DB ma non più su disco). Vedere `scripts/README.md` per i dettagli.
+
+## Hardening di Fase 8
+
+Miglioramenti di sicurezza/robustezza applicati durante l'implementazione della Fase 8 del piano:
+
+- **JWT_SECRET minimo 32 caratteri** (`src/lib/jwt.js`): il backend rifiuta di avviarsi se `JWT_SECRET` è troppo corto. Genera uno nuovo con `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`.
+- **Validazione email robusta** (`src/routes/auth.routes.js`): regex + cap di lunghezza (254 char, RFC 5321) invece del semplice `includes("@")` originale.
+- **Cap lunghezza password e displayName** (anti-abuse): password 8–128 char, displayName ≤ 64 char.
+- **Defensive path check nello scanner** (`scripts/scan.js`): evita symlink loop, scarta file fuori da `MUSIC_DIR`, validazione magic bytes JPEG sulle cover (max 5 MB).
+- **Smoke test E2E** (`scripts/smoke-test.mjs`): 25 verifiche automatizzate sugli endpoint principali. Da usare prima di ogni deploy in prod:
+
+  ```bash
+  # Contro dev locale
+  npm run test:smoke
+
+  # Contro produzione (PowerShell)
+  $env:SMOKE_BASE_URL="https://radio.chaosroom.online"; npm run test:smoke
+
+  # Contro produzione (bash)
+  SMOKE_BASE_URL=https://radio.chaosroom.online npm run test:smoke
+  ```

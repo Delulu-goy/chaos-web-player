@@ -16,7 +16,16 @@ const router = Router();
 
 const BCRYPT_COST = 12;
 const MIN_PASSWORD_LENGTH = 8;
+const MAX_PASSWORD_LENGTH = 128; // limite sanità (bcrypt tronca a 72 byte già internamente)
+const MAX_EMAIL_LENGTH = 254; // RFC 5321 §4.5.3.1.3
+const MAX_DISPLAY_NAME_LENGTH = 64;
 const COOKIE_NAME = "token";
+
+// Regex di base per email plausibili: local-part + "@" + dominio con almeno un punto.
+// Non sostituisce la validazione completa RFC 5322 ma blocca il 99% dei typo e degli
+// input malformati che arrivano dai form. La validazione "vera" è il vincolo UNIQUE
+// sul DB, che è source of truth.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function setAuthCookie(res, token) {
   res.cookie(COOKIE_NAME, token, {
@@ -46,26 +55,65 @@ function publicUser(user) {
   };
 }
 
+// Helper: normalizza e valida un'email. Ritorna { ok, value, error }.
+function validateEmail(raw) {
+  if (typeof raw !== "string") {
+    return { ok: false, error: "Inserisci un'email valida" };
+  }
+  const trimmed = raw.trim();
+  if (trimmed.length === 0 || trimmed.length > MAX_EMAIL_LENGTH) {
+    return { ok: false, error: "Inserisci un'email valida" };
+  }
+  if (!EMAIL_RE.test(trimmed)) {
+    return { ok: false, error: "Inserisci un'email valida" };
+  }
+  return { ok: true, value: trimmed.toLowerCase() };
+}
+
+// Helper: valida una password. Ritorna { ok, value, error }.
+function validatePassword(raw) {
+  if (typeof raw !== "string") {
+    return { ok: false, error: `Minimo ${MIN_PASSWORD_LENGTH} caratteri` };
+  }
+  if (raw.length < MIN_PASSWORD_LENGTH) {
+    return { ok: false, error: `Minimo ${MIN_PASSWORD_LENGTH} caratteri` };
+  }
+  if (raw.length > MAX_PASSWORD_LENGTH) {
+    return { ok: false, error: `Massimo ${MAX_PASSWORD_LENGTH} caratteri` };
+  }
+  return { ok: true, value: raw };
+}
+
 // ── POST /api/auth/register ────────────────────────────────────────
 router.post("/register", authRateLimit, async (req, res, next) => {
   try {
     const { email, password, displayName } = req.body ?? {};
 
-    if (!email || typeof email !== "string" || !email.includes("@")) {
-      throw new HttpError(400, "validation", { field: "email" });
+    const emailCheck = validateEmail(email);
+    if (!emailCheck.ok) {
+      throw new HttpError(400, "validation", { field: "email", message: emailCheck.error });
     }
-    if (!password || typeof password !== "string" || password.length < MIN_PASSWORD_LENGTH) {
+    const passwordCheck = validatePassword(password);
+    if (!passwordCheck.ok) {
       throw new HttpError(400, "validation", {
         field: "password",
-        message: `Minimo ${MIN_PASSWORD_LENGTH} caratteri`,
+        message: passwordCheck.error,
       });
     }
+    if (displayName !== undefined && displayName !== null && displayName !== "") {
+      if (typeof displayName !== "string" || displayName.length > MAX_DISPLAY_NAME_LENGTH) {
+        throw new HttpError(400, "validation", {
+          field: "displayName",
+          message: `Massimo ${MAX_DISPLAY_NAME_LENGTH} caratteri`,
+        });
+      }
+    }
 
-    const passwordHash = await bcrypt.hash(password, BCRYPT_COST);
+    const passwordHash = await bcrypt.hash(passwordCheck.value, BCRYPT_COST);
 
     const user = await prisma.user.create({
       data: {
-        email: email.toLowerCase().trim(),
+        email: emailCheck.value,
         passwordHash,
         displayName: displayName?.trim() || null,
       },

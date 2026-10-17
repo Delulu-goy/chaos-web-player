@@ -7,8 +7,9 @@
   "scripts": {
     "start": "node --experimental-strip-types src/index.js",
     "dev": "node --env-file=.env --experimental-strip-types --watch src/index.js",
-    "scan": "node --experimental-strip-types scripts/scan.js",
-    "seed": "node --experimental-strip-types scripts/seed.js",
+    "scan": "node --env-file=.env --experimental-strip-types scripts/scan.js",
+    "seed": "node --env-file=.env --experimental-strip-types scripts/seed.js",
+    "test:smoke": "node scripts/smoke-test.mjs",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
