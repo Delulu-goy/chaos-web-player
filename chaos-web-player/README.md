@@ -162,6 +162,8 @@ Queste sono state tutte risolte e documentate per evitare di rifare gli stessi e
 
 5. **`.cpanel.yml` viene eseguito automaticamente da cPanel Git Version Control** al pull. Crea le cartelle `private/`, installa deps, e fa `touch tmp/restart.txt` per restart Passenger.
 
+6. **`.gitignore` locale di Vite annulla l'eccezione di deploy** (commit `475ad1c`): `chaos-web-player/frontend/.gitignore` (Vite-generated) ha `dist/` che **sovrascrive** l'eccezione `!chaos-web-player/frontend/dist/` del `.gitignore` root. Risultato: i vecchi `dist/assets/*` e i font `.woff/.woff2` già tracciati venivano committati, ma i **nuovi bundle** generati da `npm run build` venivano bloccati silenziosamente. L'`index.html` committato referenziava i nuovi hash, ma quei file non esistevano nel repo → 404 in produzione → pagina completamente bianca. Fix: aggiunto `!dist/` anche nel `.gitignore` locale per ripristinare l'eccezione. **Regola operativa**: dopo ogni `npm run build`, controllare con `git ls-files --others --exclude-standard dist/`: se è vuoto ma `dist/index.html` cita nuovi hash `index-XXXX.js/.css`, il `.gitignore` sta bloccando i nuovi asset — aggiungere `!dist/` nel `.gitignore` locale della sotto-cartella.
+
 ## Script utili
 
 | Path       | Script       | Azione |
