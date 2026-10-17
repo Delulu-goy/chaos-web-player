@@ -13,6 +13,10 @@ dist-ssr/
 # PWA generated assets (handled by plugin, but exclude from lint)
 dev-dist/
 
+# Eccezione: committa la build frontend pre-generata per il deploy
+# (vedi .gitignore root, dist/ è forzato qui per matchare la policy deploy)
+!dist/
+
 # Logs
 logs/
 *.log
