@@ -4,7 +4,6 @@
 // Quando `highlightPlaying` è true (PlayerPage queue + PlaylistPage),
 // la riga del brano attualmente in play riceve bg-chaos-trackActive.
 
-import clsx from "clsx";
 import FavoriteButton from "./FavoriteButton";
 import { usePlayerStore } from "../store/playerStore";
 import type { Track } from "../types/api";
@@ -37,10 +36,12 @@ export default function TrackListItem({
 
   return (
     <div
-      className={clsx(
-        "flex items-center gap-4 rounded-sm",
-        active && "bg-chaos-trackActive",
-      )}
+      className="flex items-center gap-4 rounded-sm"
+      style={
+        active
+          ? { backgroundImage: "linear-gradient(to right, #191b1c 0%, #141516 100%)" }
+          : undefined
+      }
       aria-current={active ? "true" : undefined}
     >
       {/* Cover (placeholder se non disponibile) */}
