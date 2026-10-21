@@ -93,6 +93,7 @@ export default function PlaylistPage() {
                 track={track}
                 initialLiked={favoriteIds.has(track.id)}
                 onPlay={handlePlay}
+                highlightPlaying
               />
             </li>
           ))}

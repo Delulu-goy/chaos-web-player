@@ -33,7 +33,7 @@ export default function BottomNav({
 }: BottomNavProps) {
   return (
     <nav
-      className="flex shrink-0 items-center justify-around border-t border-white/10 bg-black py-3"
+      className="flex shrink-0 items-center justify-around border-t border-white/10 bg-chaos-black py-3"
       style={{
         // Padding-bottom = py-3 (12px) + safe-area iOS gesture bar
         paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))",

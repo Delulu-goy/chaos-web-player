@@ -1,27 +1,48 @@
 // Chaos Radio — TrackListItem
 // Riga riusata in Playlist, Favorites, Pirate Day.
 // Mostra: cover quadrata, titolo, artista, anno, cuore favorite.
+// Quando `highlightPlaying` è true (PlayerPage queue + PlaylistPage),
+// la riga del brano attualmente in play riceve bg-chaos-trackActive.
 
+import clsx from "clsx";
 import FavoriteButton from "./FavoriteButton";
+import { usePlayerStore } from "../store/playerStore";
 import type { Track } from "../types/api";
 
 interface TrackListItemProps {
   track: Track;
   initialLiked?: boolean;
   onPlay?: (track: Track) => void;
+  /** Se true, evidenzia la riga del brano attualmente in play. */
+  highlightPlaying?: boolean;
 }
 
 export default function TrackListItem({
   track,
   initialLiked = false,
   onPlay,
+  highlightPlaying = false,
 }: TrackListItemProps) {
   const coverUrl = track.coverPath
     ? `${(import.meta.env.VITE_API_URL as string | undefined) ?? "/api"}/tracks/${track.id}/cover`
     : null;
 
+  // Selettore che ritorna un booleano stabile: solo re-render della riga
+  // interessata quando lo stato cambia, niente cascade sulle altre.
+  const isCurrentPlaying = usePlayerStore((s) =>
+    s.isPlaying && s.currentTrack?.id === track.id,
+  );
+
+  const active = highlightPlaying && isCurrentPlaying;
+
   return (
-    <div className="flex items-center gap-4">
+    <div
+      className={clsx(
+        "flex items-center gap-4 rounded-sm",
+        active && "bg-chaos-trackActive",
+      )}
+      aria-current={active ? "true" : undefined}
+    >
       {/* Cover (placeholder se non disponibile) */}
       <button
         onClick={() => onPlay?.(track)}

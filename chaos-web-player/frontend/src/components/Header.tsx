@@ -11,7 +11,7 @@ interface HeaderProps {
 export default function Header({ className = "" }: HeaderProps) {
   return (
     <header
-      className={`flex shrink-0 items-center justify-between border-b border-white/10 bg-black px-4 pb-4 pt-[calc(env(safe-area-inset-top,0px)+1rem)] sm:px-6 ${className}`}
+      className={`flex shrink-0 items-center justify-between border-b border-white/10 bg-chaos-black px-4 pb-4 pt-[calc(env(safe-area-inset-top,0px)+1rem)] sm:px-6 ${className}`}
     >
       <div className="flex items-center gap-3">
         <LogoMark size={36} />

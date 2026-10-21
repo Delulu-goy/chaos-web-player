@@ -22,6 +22,7 @@ export default {
         chaos: {
           black: "#0d0d0d",
           surface: "#141516",
+          trackActive: "#191b1c",
           border: "rgba(255, 255, 255, 0.10)",
           muted: "rgba(255, 255, 255, 0.40)",
         },

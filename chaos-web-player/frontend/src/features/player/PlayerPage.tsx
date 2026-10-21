@@ -362,6 +362,7 @@ function PlayerView({
                 <TrackListItem
                   track={item}
                   onPlay={onPlay}
+                  highlightPlaying
                 />
               </li>
             ))}

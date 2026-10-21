@@ -24,7 +24,7 @@ export default function AppShell({
   hasNotifications = false,
 }: AppShellProps) {
   return (
-    <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-black font-mono text-white">
+    <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-chaos-surface font-mono text-white">
       <Header />
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-md flex-col px-4 pb-content-safe pt-6 sm:max-w-lg sm:px-6">
