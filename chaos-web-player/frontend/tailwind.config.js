@@ -20,8 +20,8 @@ export default {
       colors: {
         accent: "#FF5A1F",
         chaos: {
-          black: "#000000",
-          surface: "#0A0A0A",
+          black: "#0d0d0d",
+          surface: "#141516",
           border: "rgba(255, 255, 255, 0.10)",
           muted: "rgba(255, 255, 255, 0.40)",
         },
