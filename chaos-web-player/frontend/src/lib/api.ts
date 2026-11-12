@@ -7,7 +7,7 @@
 //  - handler 401 globale: se la sessione è scaduta, dispatch auth:expired event
 //    (l'auth store ascolta e fa logout, ProtectedRoute rimanda al login)
 
-const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? "/api";
+import { API_BASE } from "./media";
 
 /**
  * Event dispatched quando un 401 colpisce una chiamata auth-protected.
@@ -46,7 +46,7 @@ async function request<T>(
   path: string,
   init: RequestInitWithJson = {},
 ): Promise<T> {
-  const url = `${BASE_URL}${path}`;
+  const url = `${API_BASE}${path}`;
 
   const headers = new Headers(init.headers);
   if (init.body !== undefined && !(init.body instanceof FormData)) {

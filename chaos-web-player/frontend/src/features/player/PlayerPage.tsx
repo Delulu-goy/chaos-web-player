@@ -27,10 +27,8 @@ import { useNotificationsStore } from "../../store/notificationsStore";
 import { api, ApiError } from "../../lib/api";
 import { formatTime } from "../../lib/format";
 import { seekAudio } from "../../audio/useAudioEngine";
+import { trackCoverUrl } from "../../lib/media";
 import type { Track } from "../../types/api";
-
-const API_URL =
-  (import.meta.env.VITE_API_URL as string | undefined) ?? "/api";
 
 // 64 barre waveform seedate per look "stabile" tra render
 function useWaveform(count = 64) {
@@ -150,7 +148,7 @@ export default function PlayerPage() {
   // sovrascrivere lo stato). La coda viene impostata in loadTracks().
   const effectiveTrack = currentTrack ?? tracks[0];
   const coverUrl = effectiveTrack.coverPath
-    ? `${API_URL}/tracks/${effectiveTrack.id}/cover`
+    ? trackCoverUrl(effectiveTrack.id)
     : null;
   const duration = effectiveTrack.durationSeconds ?? 0;
   const currentSeconds = progress * duration;

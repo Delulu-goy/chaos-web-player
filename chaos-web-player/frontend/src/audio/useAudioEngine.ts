@@ -28,15 +28,14 @@
 import { useEffect, useRef, useState } from "react";
 import { usePlayerStore } from "../store/playerStore";
 import { toast } from "../store/toastStore";
-
-const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? "/api";
+import { trackCoverUrl, trackStreamUrl } from "../lib/media";
 
 /**
- * URL completo per stream audio autenticato.
- * Il cookie httpOnly viene inviato automaticamente a credentials: 'include'
- * perché lo stesso fetch wrapper è usato per la chiamata <audio>.src? No:
- * <audio>.src NON supporta credentials. Soluzione: usare un blob URL ottenuto
- * da un fetch con credenziali, oppure streamare attraverso un service worker.
+ * Nota sullo stream audio: il cookie httpOnly viene inviato
+ * automaticamente a credentials: 'include' perché lo stesso fetch wrapper
+ * è usato per la chiamata <audio>.src? No: <audio>.src NON supporta
+ * credentials. Soluzione: usare un blob URL ottenuto da un fetch con
+ * credenziali, oppure streamare attraverso un service worker.
  *
  * MVP: per semplicità il backend ESPONE lo stream con un check sul cookie
  * della SAME ORIGIN request (no CORS). Il browser invia automaticamente
@@ -45,13 +44,6 @@ const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? "/api";
  * Se il frontend gira su origin A e backend su origin B, serve un workaround
  * (proxy Vite in dev, oppure signed URL in prod). Per ora: same-origin.
  */
-function streamUrl(trackId: number): string {
-  return `${BASE_URL}/tracks/${trackId}/stream`;
-}
-
-function coverUrl(trackId: number): string {
-  return `${BASE_URL}/tracks/${trackId}/cover`;
-}
 
 /**
  * Hook da chiamare UNA VOLTE nell'app (in AppShell).
@@ -110,7 +102,7 @@ export function useAudioEngine() {
       return;
     }
 
-    audio.src = streamUrl(currentTrack.id);
+    audio.src = trackStreamUrl(currentTrack.id);
     audio.load();
   }, [audio, currentTrack?.id]);
 
@@ -157,7 +149,7 @@ export function useAudioEngine() {
 
     const preloader = new Audio();
     preloader.preload = "auto";
-    preloader.src = streamUrl(nextTrack.id);
+    preloader.src = trackStreamUrl(nextTrack.id);
 
     return () => {
       // Cleanup: aborta il download in corso quando la coda cambia.
@@ -176,7 +168,7 @@ export function useAudioEngine() {
         artist: currentTrack.artist,
         album: "Chaos Radio",
         ...(currentTrack.coverPath
-          ? { artwork: [{ src: coverUrl(currentTrack.id), sizes: "512x512", type: "image/jpeg" }] }
+          ? { artwork: [{ src: trackCoverUrl(currentTrack.id), sizes: "512x512", type: "image/jpeg" }] }
           : {}),
       });
 

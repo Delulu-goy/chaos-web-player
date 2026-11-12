@@ -19,6 +19,7 @@
 
 import FavoriteButton from "./FavoriteButton";
 import { usePlayerStore } from "../store/playerStore";
+import { trackCoverUrl } from "../lib/media";
 import type { Track } from "../types/api";
 
 interface TrackListItemProps {
@@ -34,7 +35,7 @@ export default function TrackListItem({
   highlightPlaying = false,
 }: TrackListItemProps) {
   const coverUrl = track.coverPath
-    ? `${(import.meta.env.VITE_API_URL as string | undefined) ?? "/api"}/tracks/${track.id}/cover`
+    ? trackCoverUrl(track.id)
     : null;
 
   // Selettore che ritorna un booleano stabile: solo re-render della riga
