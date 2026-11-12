@@ -23,6 +23,7 @@ deployment:
 
     # ── Backend ────────────────────────────────
     - cd $SOURCE_ROOT/backend
+    - echo "[deploy] ffmpeg: $(which ffmpeg 2>/dev/null || echo 'non installato')"
     - echo "[deploy] installing backend dependencies..."
     - npm install --production
     - echo "[deploy] generating Prisma client..."

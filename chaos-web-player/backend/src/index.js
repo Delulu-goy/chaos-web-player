@@ -14,6 +14,7 @@ import cors from "cors";
 import helmet from "helmet";
 
 import { errorHandler } from "./middleware/error.js";
+import { probeTools } from "./diagnostics.js";
 
 import authRoutes from "./routes/auth.routes.js";
 import tracksRoutes from "./routes/tracks.routes.js";
@@ -25,6 +26,13 @@ const app = express();
 const PORT = parseInt(process.env.PORT ?? "3001", 10);
 
 console.log("[chaos-radio] Boot v2026-10-12-FINAL-FIX pid=" + process.pid + " node=" + process.version);
+
+// Diagnostica host: calcolata UNA volta al boot (lancia dei processi, non
+// deve farlo a ogni richiesta). Serve a capire quali strumenti di sistema
+// sono disponibili su Stellar, per esempio ffmpeg per il calcolo delle
+// waveform lato server.
+const tools = probeTools();
+console.log("[chaos-radio] tools: " + JSON.stringify(tools));
 
 // Debug endpoint: ci dice esattamente cosa sta girando
 app.get("/api/debug", (req, res) => {
@@ -42,6 +50,7 @@ app.get("/api/debug", (req, res) => {
       PORT: process.env.PORT ?? "MISSING",
     },
     cwd: process.cwd(),
+    tools,
   });
 });
 
