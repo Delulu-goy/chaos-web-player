@@ -60,9 +60,13 @@ function makeJar() {
   };
 }
 
-async function http(method, path, { body, jar, omitBody = false } = {}) {
+async function http(
+  method,
+  path,
+  { body, jar, omitBody = false, headers: extraHeaders, raw = false } = {},
+) {
   const url = `${BASE_URL}${path}`;
-  const headers = { Accept: "application/json" };
+  const headers = { Accept: "application/json", ...extraHeaders };
   const cookie = jar?.header();
   if (cookie) headers.Cookie = cookie;
   let payload;
@@ -91,6 +95,15 @@ async function http(method, path, { body, jar, omitBody = false } = {}) {
     for (const c of setCookies) jar?.setFromHeader(c);
 
     const status = res.status;
+    const resHeaders = Object.fromEntries(res.headers.entries());
+
+    // `raw: true` per risposte binarie (stream audio): non tentiamo il
+    // JSON parse e restituiamo il numero di byte effettivamente ricevuti.
+    if (raw) {
+      const buf = Buffer.from(await res.arrayBuffer());
+      return { status, json: null, text: "", setCookies, resHeaders, bytes: buf.length };
+    }
+
     const text = status === 204 ? "" : await res.text();
     let json = null;
     if (text) {
@@ -100,9 +113,9 @@ async function http(method, path, { body, jar, omitBody = false } = {}) {
         /* non-JSON body, lascia json = null */
       }
     }
-    return { status, json, text, setCookies };
+    return { status, json, text, setCookies, resHeaders };
   } catch (err) {
-    return { status: 0, json: null, text: "", setCookies: [], error: err.message ?? String(err) };
+    return { status: 0, json: null, text: "", setCookies: [], resHeaders: {}, error: err.message ?? String(err) };
   } finally {
     clearTimeout(timer);
   }
@@ -243,6 +256,45 @@ async function run() {
       "GET /api/tracks/9999999/stream → 404",
       r.status === 404,
       `status=${r.status}`,
+    );
+  }
+
+  // ── 11b. Range request su uno stream REALE → 206 + Content-Range ────
+  // Regressione: il server dichiarava `Accept-Ranges: bytes` ma ignorava
+  // l'header Range (usava fs.createReadStream().pipe(res)), quindi ogni
+  // seek riscaricava l'intero MP3. Ora deve rispondere 206 parziale.
+  if (firstTrackId) {
+    const r = await http("GET", `/api/tracks/${firstTrackId}/stream`, {
+      jar,
+      raw: true,
+      headers: { Accept: "*/*", Range: "bytes=0-99" },
+    });
+    const cr = r.resHeaders?.["content-range"];
+    const cl = r.resHeaders?.["content-length"];
+    record(
+      `GET /api/tracks/${firstTrackId}/stream (Range: bytes=0-99) → 206`,
+      r.status === 206 &&
+        typeof cr === "string" &&
+        cr.startsWith("bytes 0-99/") &&
+        Number(cl) === 100 &&
+        r.bytes === 100,
+      `status=${r.status}, content-range=${cr ?? "n/a"}, content-length=${cl ?? "n/a"}, bytes=${r.bytes}`,
+    );
+
+    // Senza Range: risposta completa 200, lunghezza = dimensione del file.
+    const r2 = await http("GET", `/api/tracks/${firstTrackId}/stream`, {
+      jar,
+      raw: true,
+      headers: { Accept: "*/*" },
+    });
+    const cl2 = r2.resHeaders?.["content-length"];
+    record(
+      `GET /api/tracks/${firstTrackId}/stream (senza Range) → 200 completo`,
+      r2.status === 200 &&
+        typeof cl2 === "string" &&
+        Number(cl2) > 0 &&
+        r2.bytes === Number(cl2),
+      `status=${r2.status}, content-length=${cl2 ?? "n/a"}, bytes=${r2.bytes}`,
     );
   }
 

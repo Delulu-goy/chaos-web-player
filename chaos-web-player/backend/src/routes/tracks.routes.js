@@ -10,6 +10,7 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import prisma from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { streamRateLimit } from "../middleware/rateLimit.js";
 import { HttpError } from "../middleware/error.js";
 
 const router = Router();
@@ -51,7 +52,17 @@ router.get("/:id", async (req, res, next) => {
 });
 
 // GET /api/tracks/:id/stream — file audio
-router.get("/:id/stream", async (req, res, next) => {
+//
+// NOTA: si usa res.sendFile() e NON fs.createReadStream().pipe(res).
+// sendFile (wrapper di `send`) gestisce nativamente:
+//   - le Range request → risponde 206 + Content-Range invece di 200 col file intero
+//   - ETag / Last-Modified (cache/validazione condizionale del browser)
+//   - la chiusura dello stream quando il CLIENT ABBATTE la connessione
+//     (succede a ogni seek: senza questo, il server continua a leggere
+//     il file da disco e a scrivere in un socket morto)
+// Con createReadStream il server dichiarava `Accept-Ranges: bytes` ma
+// ignorava l'header Range: ogni seek riscaricava l'intero MP3.
+router.get("/:id/stream", streamRateLimit, async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (Number.isNaN(id)) {
@@ -66,13 +77,23 @@ router.get("/:id/stream", async (req, res, next) => {
       throw new HttpError(404, "not_found");
     }
 
-    const stat = fs.statSync(track.filePath);
-    res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Content-Length", stat.size);
-    res.setHeader("Accept-Ranges", "bytes");
-    res.setHeader("Cache-Control", "private, max-age=3600");
-
-    fs.createReadStream(track.filePath).pipe(res);
+    res.sendFile(
+      path.resolve(track.filePath),
+      {
+        acceptRanges: true,
+        cacheControl: "private, max-age=3600",
+        dotfiles: "deny",
+        headers: { "Content-Type": "audio/mpeg" },
+      },
+      (err) => {
+        // Se il client ha abortito, gli header sono già partiti e non
+        // c'è più nulla da rispondere: non chiamare next() altrimenti
+        // Express tenta una seconda risposta su una connessione chiusa.
+        if (err && !res.headersSent) {
+          next(err);
+        }
+      },
+    );
   } catch (err) {
     next(err);
   }
