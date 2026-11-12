@@ -19,6 +19,7 @@ export default function NotificationsPage() {
   const items = useNotificationsStore((s) => s.items);
   const isLoading = useNotificationsStore((s) => s.isLoading);
   const error = useNotificationsStore((s) => s.error);
+  const unread = useNotificationsStore((s) => s.unreadCount());
   const fetchNotifications = useNotificationsStore((s) => s.fetch);
   const markRead = useNotificationsStore((s) => s.markRead);
 
@@ -28,7 +29,11 @@ export default function NotificationsPage() {
   }, [fetchNotifications]);
 
   return (
-    <AppShell activeTab="notifications" onTabChange={onTabChange}>
+    <AppShell
+      activeTab="notifications"
+      onTabChange={onTabChange}
+      hasNotifications={unread > 0}
+    >
       <h1 className="text-3xl font-bold tracking-tight">UPDATES</h1>
 
       {isLoading && items.length === 0 && <LoadingView />}
