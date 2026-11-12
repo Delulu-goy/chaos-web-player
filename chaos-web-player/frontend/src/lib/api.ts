@@ -76,14 +76,36 @@ async function request<T>(
   }
 
   const text = await response.text();
-  const data = text ? JSON.parse(text) : null;
+
+  // Il body può non essere JSON: su Apache/Stellar una 502 o una pagina di
+  // errore del proxy rispondono HTML. Senza questo try/catch il parse
+  // lancerebbe un SyntaxError (che NON è un ApiError): i catch esistenti
+  // `err instanceof ApiError` non scatterebbero e il chiamante riceverebbe
+  // un errore generico invece dello status reale.
+  let data: unknown = null;
+  let parseFailed = false;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      parseFailed = true;
+    }
+  }
 
   if (!response.ok) {
+    const err = data as { error?: string; details?: unknown } | null;
     throw new ApiError(
       response.status,
-      data?.error ?? "unknown_error",
-      data?.details,
+      err?.error ?? (parseFailed ? "invalid_response" : "unknown_error"),
+      err?.details ?? (parseFailed ? text.slice(0, 200) : undefined),
     );
+  }
+
+  if (parseFailed) {
+    // 2xx ma body non-JSON: meglio un errore esplicito che restituire null
+    // e far fallire il chiamante con un errore generico e incomprensibile.
+    console.warn("[api] risposta non-JSON:", text.slice(0, 200));
+    throw new ApiError(response.status, "invalid_response", text.slice(0, 200));
   }
 
   return data as T;
