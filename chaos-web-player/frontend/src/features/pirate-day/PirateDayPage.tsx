@@ -16,7 +16,6 @@ import TrackListItem from "../../components/TrackListItem";
 import CuratorCard from "../../components/CuratorCard";
 import { usePlayerStore } from "../../store/playerStore";
 import { useNotificationsStore } from "../../store/notificationsStore";
-import { useFavoritesStore } from "../../store/favoritesStore";
 import { api, ApiError } from "../../lib/api";
 import { formatCountdown } from "../../lib/format";
 import type { PirateDayResponse, Track } from "../../types/api";
@@ -48,9 +47,6 @@ export default function PirateDayPage() {
   const navigate = useNavigate();
   const unread = useNotificationsStore((s) => s.unreadCount());
   const onTabChange = (k: TabKey) => navigate(`/${k}`);
-
-  const fetchFavorites = useFavoritesStore((s) => s.fetch);
-  const favoriteIds = useFavoritesStore((s) => s.favoriteIds);
 
   const [data, setData] = useState<PirateDayResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -84,7 +80,6 @@ export default function PirateDayPage() {
 
   useEffect(() => {
     loadPlaylist();
-    fetchFavorites();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -232,7 +227,6 @@ export default function PirateDayPage() {
             <li key={track.id}>
               <TrackListItem
                 track={track}
-                initialLiked={favoriteIds.has(track.id)}
                 onPlay={handlePlay}
               />
             </li>

@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuthStore } from "./store/authStore";
 import { useNotificationsStore } from "./store/notificationsStore";
+import { useFavoritesStore } from "./store/favoritesStore";
 import { useAudioEngine } from "./audio/useAudioEngine";
 import { toast } from "./store/toastStore";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -25,60 +26,62 @@ export default function App() {
       <AuthBootstrap>
         <AudioEngineMount>
           <NotifierMount>
-            <Routes>
-              {/* Public */}
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
+            <FavoritesMount>
+              <Routes>
+                {/* Public */}
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
 
-              {/* Protected */}
-              <Route
-                path="/player"
-                element={
-                  <ProtectedRoute>
-                    <PlayerPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/playlist"
-                element={
-                  <ProtectedRoute>
-                    <PlaylistPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/favorites"
-                element={
-                  <ProtectedRoute>
-                    <FavoritesPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/pirate-day"
-                element={
-                  <ProtectedRoute>
-                    <PirateDayPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/notifications"
-                element={
-                  <ProtectedRoute>
-                    <NotificationsPage />
-                  </ProtectedRoute>
-                }
-              />
+                {/* Protected */}
+                <Route
+                  path="/player"
+                  element={
+                    <ProtectedRoute>
+                      <PlayerPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/playlist"
+                  element={
+                    <ProtectedRoute>
+                      <PlaylistPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/favorites"
+                  element={
+                    <ProtectedRoute>
+                      <FavoritesPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/pirate-day"
+                  element={
+                    <ProtectedRoute>
+                      <PirateDayPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/notifications"
+                  element={
+                    <ProtectedRoute>
+                      <NotificationsPage />
+                    </ProtectedRoute>
+                  }
+                />
 
-              {/* Default → player (auth guard farà redirect a /login) */}
-              <Route path="/" element={<Navigate to="/player" replace />} />
+                {/* Default → player (auth guard farà redirect a /login) */}
+                <Route path="/" element={<Navigate to="/player" replace />} />
 
-              {/* 404 */}
-              <Route path="*" element={<NotFoundPage />} />
-            </Routes>
-            <ToastHost />
+                {/* 404 */}
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+              <ToastHost />
+            </FavoritesMount>
           </NotifierMount>
         </AudioEngineMount>
       </AuthBootstrap>
@@ -109,6 +112,31 @@ function AuthBootstrap({ children }: { children: React.ReactNode }) {
  */
 function AudioEngineMount({ children }: { children: React.ReactNode }) {
   useAudioEngine();
+  return <>{children}</>;
+}
+
+/**
+ * Carica i preferiti dell'utente loggato, una volta sola al login.
+ *
+ * I preferiti sono dati cross-page: il player, la playlist e i preferiti
+ * mostrano gli stessi cuori, quindi il caricamento non può stare in una
+ * singola pagina (il player non ha una sua pagina "preferiti" da cui
+ * partire). Lo store `favoritesStore` è l'unica fonte di verità e questa
+ * wrapper lo tiene allineato con la sessione: fetch al login, reset al logout.
+ */
+function FavoritesMount({ children }: { children: React.ReactNode }) {
+  const user = useAuthStore((s) => s.user);
+  const fetchFavorites = useFavoritesStore((s) => s.fetch);
+  const resetFavorites = useFavoritesStore((s) => s.reset);
+
+  useEffect(() => {
+    if (user) {
+      void fetchFavorites();
+    } else {
+      resetFavorites();
+    }
+  }, [user, fetchFavorites, resetFavorites]);
+
   return <>{children}</>;
 }
 

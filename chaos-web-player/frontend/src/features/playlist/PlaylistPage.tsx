@@ -11,7 +11,6 @@ import EmptyState from "../../components/ui/EmptyState";
 import TrackListItem from "../../components/TrackListItem";
 import { usePlayerStore } from "../../store/playerStore";
 import { useNotificationsStore } from "../../store/notificationsStore";
-import { useFavoritesStore } from "../../store/favoritesStore";
 import { api, ApiError } from "../../lib/api";
 import type { Track } from "../../types/api";
 
@@ -22,8 +21,6 @@ export default function PlaylistPage() {
 
   const [tracks, setTracks] = useState<Track[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const favoriteIds = useFavoritesStore((s) => s.favoriteIds);
-  const fetchFavorites = useFavoritesStore((s) => s.fetch);
 
   // Fetch brani
   const loadTracks = () => {
@@ -45,8 +42,7 @@ export default function PlaylistPage() {
 
   useEffect(() => {
     loadTracks();
-    fetchFavorites();
-  }, [fetchFavorites]);
+  }, []);
 
   const handlePlay = (track: Track) => {
     if (!tracks) return;
@@ -91,7 +87,6 @@ export default function PlaylistPage() {
             <li key={track.id}>
               <TrackListItem
                 track={track}
-                initialLiked={favoriteIds.has(track.id)}
                 onPlay={handlePlay}
                 highlightPlaying
               />

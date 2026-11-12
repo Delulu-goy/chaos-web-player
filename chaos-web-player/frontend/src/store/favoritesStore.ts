@@ -1,23 +1,34 @@
 // Chaos Radio — Favorites store (Zustand)
-// Tiene in cache gli ID dei brani preferiti dell'utente corrente per mostrare
-// lo stato "liked" nelle liste senza dover interrogare /api/favorites ogni volta.
+//
+// Unica fonte di verità sullo stato "preferito" dell'utente: i cuori in
+// tutta l'app (player, playlist, preferiti, pirate day) leggono e scrivono
+// qui, nessun componente duplica lo stato.
+//
+// `items` = lista completa dei preferiti (dal server), usata da FavoritesPage
+// per il rendering. `favoriteIds` = gli ID, per lookup O(1) nei selettori
+// dei singoli cuori.
 
 import { create } from "zustand";
 import { api, ApiError } from "../lib/api";
+import { toast } from "./toastStore";
 import type { Track } from "../types/api";
 
 interface FavoritesState {
+  /** Brani preferiti dell'utente corrente (dal server). */
+  items: Track[];
+  /** ID dei preferiti, per lookup O(1). */
   favoriteIds: Set<number>;
   isLoading: boolean;
   error: string | null;
 
   fetch: () => Promise<void>;
   isFavorite: (trackId: number) => boolean;
-  toggle: (trackId: number) => Promise<boolean>;
+  toggle: (track: Track) => Promise<boolean>;
   reset: () => void;
 }
 
 export const useFavoritesStore = create<FavoritesState>((set, get) => ({
+  items: [],
   favoriteIds: new Set(),
   isLoading: false,
   error: null,
@@ -27,13 +38,14 @@ export const useFavoritesStore = create<FavoritesState>((set, get) => ({
     try {
       const tracks = await api.get<Track[]>("/favorites");
       set({
+        items: tracks,
         favoriteIds: new Set(tracks.map((t) => t.id)),
         isLoading: false,
       });
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         // Non loggato: reset silenzioso
-        set({ favoriteIds: new Set(), isLoading: false });
+        set({ items: [], favoriteIds: new Set(), isLoading: false });
         return;
       }
       set({ error: "Impossibile caricare i preferiti", isLoading: false });
@@ -42,41 +54,49 @@ export const useFavoritesStore = create<FavoritesState>((set, get) => ({
 
   isFavorite: (trackId) => get().favoriteIds.has(trackId),
 
-  toggle: async (trackId) => {
-    const isFav = get().favoriteIds.has(trackId);
-    const next = !isFav;
+  toggle: async (track) => {
+    const wasFavorite = get().favoriteIds.has(track.id);
+    const next = !wasFavorite;
 
-    // Optimistic update
-    const newSet = new Set(get().favoriteIds);
+    // Snapshot PRIMA dell'ottimistica: è ciò che va ripristinato se la
+    // chiamata fallisce. (Prima si leggeva lo stato DOPO l'ottimistica:
+    // il rollback era un no-op e l'errore restava invisibile.)
+    const previousIds = get().favoriteIds;
+    const previousItems = get().items;
+
+    const optimisticIds = new Set(previousIds);
     if (next) {
-      newSet.add(trackId);
+      optimisticIds.add(track.id);
     } else {
-      newSet.delete(trackId);
+      optimisticIds.delete(track.id);
     }
-    set({ favoriteIds: newSet });
+
+    // La lista dei preferiti si aggiorna subito: il nuovo preferito entra
+    // in testa, quello tolto esce. Così FavoritesPage si aggiorna in tempo
+    // reale senza refetch.
+    const optimisticItems = next
+      ? [track, ...previousItems.filter((t) => t.id !== track.id)]
+      : previousItems.filter((t) => t.id !== track.id);
+
+    set({ favoriteIds: optimisticIds, items: optimisticItems });
 
     try {
       if (next) {
-        await api.post(`/favorites/${trackId}`);
+        await api.post(`/favorites/${track.id}`);
       } else {
-        await api.delete(`/favorites/${trackId}`);
+        await api.delete(`/favorites/${track.id}`);
       }
       return next;
     } catch (err) {
-      // Rollback
-      const rollback = new Set(get().favoriteIds);
-      if (isFav) {
-        rollback.add(trackId);
-      } else {
-        rollback.delete(trackId);
-      }
-      set({ favoriteIds: rollback });
+      // Rollback: ripristiniamo lo stato precedente, non quello ottimistico.
+      set({ favoriteIds: previousIds, items: previousItems });
       if (err instanceof ApiError) {
-        console.warn(`Favorite[${trackId}] toggle failed:`, err.code);
+        console.warn(`Favorite[${track.id}] toggle failed:`, err.code);
       }
+      toast.error("Impossibile aggiornare i preferiti. Riprova.");
       throw err;
     }
   },
 
-  reset: () => set({ favoriteIds: new Set(), error: null }),
+  reset: () => set({ items: [], favoriteIds: new Set(), error: null }),
 }));

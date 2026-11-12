@@ -23,7 +23,6 @@ import type { Track } from "../types/api";
 
 interface TrackListItemProps {
   track: Track;
-  initialLiked?: boolean;
   onPlay?: (track: Track) => void;
   /** Se true, evidenzia la riga del brano attualmente in play. */
   highlightPlaying?: boolean;
@@ -31,7 +30,6 @@ interface TrackListItemProps {
 
 export default function TrackListItem({
   track,
-  initialLiked = false,
   onPlay,
   highlightPlaying = false,
 }: TrackListItemProps) {
@@ -91,10 +89,7 @@ export default function TrackListItem({
 
       {/* Favorite button — z-10 per restare sopra l'overlay */}
       <span className="relative z-10">
-        <FavoriteButton
-          trackId={track.id}
-          initialLiked={initialLiked}
-        />
+        <FavoriteButton track={track} />
       </span>
     </div>
   );

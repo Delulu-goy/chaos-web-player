@@ -253,7 +253,7 @@ function PlayerView({
             <Share2 size={22} />
           </button>
           <FavoriteButton
-            trackId={track.id}
+            track={track}
             size={22}
           />
         </div>

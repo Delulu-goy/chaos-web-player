@@ -1,51 +1,39 @@
 // Chaos Radio — FavoriteButton (cuore toggle per i preferiti)
+//
+// Lo stato NON è locale: si legge e si scrive in useFavoritesStore, che è
+// l'unica fonte di verità. Così il cuore ha lo stesso aspetto in tutte le
+// pagine (player, playlist, preferiti, pirate day) e resta allineato dopo
+// un remount o un cambio di tab.
+//
+// Nota: il bottone riceve il Track completo (non solo l'id) perché lo store
+// deve poter inserire il brano nella lista dei preferiti all'ottimistica.
 
 import { Heart } from "lucide-react";
-import { useEffect, useState } from "react";
-import { api, ApiError } from "../lib/api";
+import { useState } from "react";
 import { useAuthStore } from "../store/authStore";
-import { toast } from "../store/toastStore";
+import { useFavoritesStore } from "../store/favoritesStore";
+import type { Track } from "../types/api";
 
 interface FavoriteButtonProps {
-  trackId: number;
-  initialLiked?: boolean;
+  track: Track;
   size?: number;
 }
 
-export default function FavoriteButton({
-  trackId,
-  initialLiked = false,
-  size = 20,
-}: FavoriteButtonProps) {
-  const [liked, setLiked] = useState(initialLiked);
-  const [busy, setBusy] = useState(false);
+export default function FavoriteButton({ track, size = 20 }: FavoriteButtonProps) {
   const user = useAuthStore((s) => s.user);
-
-  // Se l'utente cambia (login/logout), reset
-  useEffect(() => {
-    setLiked(initialLiked);
-  }, [initialLiked, user?.id]);
+  const liked = useFavoritesStore((s) => s.favoriteIds.has(track.id));
+  const toggleFavorite = useFavoritesStore((s) => s.toggle);
+  const [busy, setBusy] = useState(false);
 
   const toggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!user || busy) return;
 
-    const next = !liked;
-    setLiked(next); // optimistic
     setBusy(true);
-
     try {
-      if (next) {
-        await api.post(`/favorites/${trackId}`);
-      } else {
-        await api.delete(`/favorites/${trackId}`);
-      }
-    } catch (err) {
-      setLiked(!next); // rollback
-      if (err instanceof ApiError) {
-        toast.error("Impossibile aggiornare i preferiti. Riprova.");
-        console.warn(`Favorite[${trackId}] toggle failed:`, err.code);
-      }
+      await toggleFavorite(track);
+    } catch {
+      // Rollback e toast sono già gestiti dallo store.
     } finally {
       setBusy(false);
     }
