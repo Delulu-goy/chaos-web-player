@@ -106,6 +106,42 @@ export function useAudioEngine() {
     audio.load();
   }, [audio, currentTrack?.id]);
 
+  // ── Ripristino posizione di riproduzione ─────────────────────────────
+  // Dopo un reload lo store conserva `progress`, ma l'elemento <audio>
+  // riparte da currentTime = 0. Lo riportiamo alla posizione salvata appena
+  // il brano è pronto (loadedmetadata), non prima: il valore di `duration`
+  // è noto solo da quel momento.
+  //
+  // Lo snapshot va catturato qui, al cambio brano: su un cambio normale
+  // `progress` è 0 (impostato da next/playTrack/setQueue nella stessa set()
+  // atomica) e quindi non viene eseguito alcun seek. Solo il brano
+  // ripristinato dal localStorage ha una posizione > 0.
+  useEffect(() => {
+    if (!audio || !currentTrack) return;
+
+    const restoreAt = usePlayerStore.getState().progress;
+
+    const onLoadedMetadata = () => {
+      if (
+        restoreAt <= 0.001 ||
+        restoreAt >= 0.999 ||
+        !Number.isFinite(audio.duration) ||
+        audio.duration <= 0
+      ) {
+        return;
+      }
+      try {
+        audio.currentTime = restoreAt * audio.duration;
+      } catch {
+        // currentTime non impostabile: il timeupdate successivo riporterà
+        // comunque la posizione reale.
+      }
+    };
+
+    audio.addEventListener("loadedmetadata", onLoadedMetadata);
+    return () => audio.removeEventListener("loadedmetadata", onLoadedMetadata);
+  }, [audio, currentTrack?.id]);
+
   // ── Reconcile: desired state → elemento audio ─────────────────────────
   // `audio.paused` rende l'effect idempotente: non chiamo play/pause se
   // l'elemento è già nello stato desiderato.

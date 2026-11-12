@@ -73,9 +73,21 @@ export default function PlayerPage() {
       .get<Track[]>("/tracks")
       .then((data) => {
         setTracks(data);
-        // Auto-play del primo brano se la coda è vuota
-        if (data.length > 0 && !usePlayerStore.getState().currentTrack) {
-          setQueue(data, 0);
+
+        // Lo stato persistito può contenere un brano che non è più in
+        // libreria (scan/seed lo hanno rimosso). Se il brano ripristinato
+        // non esiste più, ripartiamo dal primo disponibile; se invece esiste
+        // lo teniamo, e l'utente riprende da dove aveva lasciato.
+        const restored = usePlayerStore.getState().currentTrack;
+        const stillThere =
+          restored !== null && data.some((t) => t.id === restored.id);
+
+        if (!stillThere) {
+          if (data.length > 0) {
+            setQueue(data, 0);
+          } else {
+            usePlayerStore.getState().reset();
+          }
         }
       })
       .catch((err) => {
