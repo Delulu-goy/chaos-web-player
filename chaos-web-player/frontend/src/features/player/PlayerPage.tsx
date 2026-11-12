@@ -21,6 +21,7 @@ import LoadingView from "../../components/ui/LoadingView";
 import EmptyState from "../../components/ui/EmptyState";
 import FavoriteButton from "../../components/FavoriteButton";
 import TrackListItem from "../../components/TrackListItem";
+import Waveform from "../../components/Waveform";
 import { usePlayerStore } from "../../store/playerStore";
 import { useNotificationsStore } from "../../store/notificationsStore";
 import { api, ApiError } from "../../lib/api";
@@ -48,18 +49,20 @@ export default function PlayerPage() {
   const unread = useNotificationsStore((s) => s.unreadCount());
   const onTabChange = (k: TabKey) => navigate(`/${k}`);
 
-  const {
-    currentTrack,
-    isPlaying,
-    isMuted,
-    progress,
-    setQueue,
-    toggle,
-    next,
-    prev,
-    setMuted,
-    setProgress,
-  } = usePlayerStore();
+  // Selettori invece di `usePlayerStore()` per intero: senza selettore
+  // OGNI variazione dello store (incluso `progress`, aggiornato 4 volte/s
+  // dal timeupdate) ri-renderizza l'intera pagina. Con i selettori
+  // ri-renderizza solo quando cambia davvero un valore usato.
+  const currentTrack = usePlayerStore((s) => s.currentTrack);
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const isMuted = usePlayerStore((s) => s.isMuted);
+  const progress = usePlayerStore((s) => s.progress);
+  const setQueue = usePlayerStore((s) => s.setQueue);
+  const toggle = usePlayerStore((s) => s.toggle);
+  const next = usePlayerStore((s) => s.next);
+  const prev = usePlayerStore((s) => s.prev);
+  const setMuted = usePlayerStore((s) => s.setMuted);
+  const setProgress = usePlayerStore((s) => s.setProgress);
 
   // Recupera i brani al primo mount
   const [tracks, setTracks] = useState<Track[] | null>(null);
@@ -91,9 +94,9 @@ export default function PlayerPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const ratio = (e.clientX - rect.left) / rect.width;
+  // Feedback visivo immediato; il seek audio è throttled dentro
+  // seekAudio() per non aprire una Range request HTTP per ogni evento.
+  const handleSeek = (ratio: number) => {
     setProgress(ratio);
     seekAudio(ratio);
   };
@@ -142,11 +145,9 @@ export default function PlayerPage() {
     );
   }
 
-  // Nessun brano in riproduzione ma ci sono brani: prendi il primo
-  if (!currentTrack) {
-    setQueue(tracks, 0);
-  }
-
+  // NB: niente setQueue() nel body del render (era un side effect durante
+  // il render: in StrictMode veniva eseguito due volte e poteva
+  // sovrascrivere lo stato). La coda viene impostata in loadTracks().
   const effectiveTrack = currentTrack ?? tracks[0];
   const coverUrl = effectiveTrack.coverPath
     ? `${API_URL}/tracks/${effectiveTrack.id}/cover`
@@ -194,7 +195,7 @@ interface PlayerViewProps {
   onToggle: () => void;
   onNext: () => void;
   onPrev: () => void;
-  onSeek: (e: React.MouseEvent<HTMLDivElement>) => void;
+  onSeek: (ratio: number) => void;
   onShare: () => void;
   onMute: () => void;
   onPlay: (t: Track) => void;
@@ -264,33 +265,8 @@ function PlayerView({
         <span>{track.genres?.join(", ") ?? "—"}</span>
       </div>
 
-      {/* Waveform */}
-      <div
-        className="mt-4 flex h-16 cursor-pointer items-center gap-[2px]"
-        onClick={onSeek}
-        role="slider"
-        aria-label="Posizione riproduzione"
-        aria-valuenow={Math.round(progress * 100)}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        tabIndex={0}
-      >
-        {bars.map((h, i) => {
-          const played = i / bars.length < progress;
-          return (
-            <span
-              key={i}
-              className="w-full rounded-full"
-              style={{
-                height: `${h * 100}%`,
-                backgroundColor: played
-                  ? "#FF5A1F"
-                  : "rgba(255,255,255,0.35)",
-              }}
-            />
-          );
-        })}
-      </div>
+      {/* Waveform — click, drag e tastiera per il seek */}
+      <Waveform progress={progress} onSeek={onSeek} bars={bars} />
 
       {/* Time row */}
       <div className="mt-2 flex items-center justify-between text-sm">

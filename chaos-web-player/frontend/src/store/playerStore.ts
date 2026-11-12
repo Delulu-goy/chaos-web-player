@@ -28,7 +28,7 @@ interface PlayerState {
   reset: () => void;
 }
 
-export const usePlayerStore = create<PlayerState>((set, get) => ({
+export const usePlayerStore = create<PlayerState>((set) => ({
   currentTrack: null,
   queue: [],
   queueIndex: -1,
@@ -65,35 +65,35 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     });
   },
 
-  toggle: () => set({ isPlaying: !get().isPlaying }),
+  // Forma funzionale: legge lo stato più recente senza passare per get(),
+  // che può essere stale se più azioni sono accodate nello stesso tick.
+  toggle: () => set((s) => ({ isPlaying: !s.isPlaying })),
 
   setPlaying: (b) => set({ isPlaying: b }),
 
-  next: () => {
-    const { queue, queueIndex } = get();
-    if (queueIndex < queue.length - 1) {
-      const nextIdx = queueIndex + 1;
-      set({
+  next: () =>
+    set((s) => {
+      if (s.queueIndex >= s.queue.length - 1) return s; // fine coda: no-op
+      const nextIdx = s.queueIndex + 1;
+      return {
         queueIndex: nextIdx,
-        currentTrack: queue[nextIdx],
+        currentTrack: s.queue[nextIdx],
         progress: 0,
         isPlaying: true,
-      });
-    }
-  },
+      };
+    }),
 
-  prev: () => {
-    const { queue, queueIndex } = get();
-    if (queueIndex > 0) {
-      const prevIdx = queueIndex - 1;
-      set({
+  prev: () =>
+    set((s) => {
+      if (s.queueIndex <= 0) return s; // inizio coda: no-op
+      const prevIdx = s.queueIndex - 1;
+      return {
         queueIndex: prevIdx,
-        currentTrack: queue[prevIdx],
+        currentTrack: s.queue[prevIdx],
         progress: 0,
         isPlaying: true,
-      });
-    }
-  },
+      };
+    }),
 
   setProgress: (p) => set({ progress: Math.min(1, Math.max(0, p)) }),
 
