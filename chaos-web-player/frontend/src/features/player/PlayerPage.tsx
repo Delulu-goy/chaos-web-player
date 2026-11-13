@@ -1,6 +1,10 @@
 // Chaos Radio — PlayerPage
 // Refactor di ChaosRadioPlayer.jsx con audio reale (useAudioEngine) + playerStore.
 // Layout fedele all'originale: cover, title, meta, waveform (clickable), time, controls, queue.
+//
+// La lista "ON QUEUE" mostra la coda REALE (quella dello store), non tutta
+// la libreria: la coda è sempre show list OPPURE pirate day, mai una
+// miscela (invariante I5).
 
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
@@ -23,13 +27,14 @@ import FavoriteButton from "../../components/FavoriteButton";
 import TrackListItem from "../../components/TrackListItem";
 import Waveform from "../../components/Waveform";
 import { usePlayerStore } from "../../store/playerStore";
+import type { QueueSource } from "../../store/playerStore";
 import { useNotificationsStore } from "../../store/notificationsStore";
 import { api, ApiError } from "../../lib/api";
 import { formatTime } from "../../lib/format";
 import { useTrackWaveform } from "../../hooks/useTrackWaveform";
 import { seekAudio } from "../../audio/useAudioEngine";
 import { trackCoverUrl } from "../../lib/media";
-import type { Track } from "../../types/api";
+import type { ShowListResponse, Track } from "../../types/api";
 
 // Barre decorative di fallback: usate solo quando il brano non ha ancora
 // la waveform reale (non ancora calcolata lato server).
@@ -54,10 +59,11 @@ export default function PlayerPage() {
   // dal timeupdate) ri-renderizza l'intera pagina. Con i selettori
   // ri-renderizza solo quando cambia davvero un valore usato.
   const currentTrack = usePlayerStore((s) => s.currentTrack);
+  const queue = usePlayerStore((s) => s.queue);
+  const queueSource = usePlayerStore((s) => s.queueSource);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const isMuted = usePlayerStore((s) => s.isMuted);
   const progress = usePlayerStore((s) => s.progress);
-  const setQueue = usePlayerStore((s) => s.setQueue);
   const toggle = usePlayerStore((s) => s.toggle);
   const next = usePlayerStore((s) => s.next);
   const prev = usePlayerStore((s) => s.prev);
@@ -69,29 +75,39 @@ export default function PlayerPage() {
   // il player mostra le barre decorative di fallback.
   const waveformPeaks = useTrackWaveform(currentTrack?.id ?? null);
 
-  // Recupera i brani al primo mount
-  const [tracks, setTracks] = useState<Track[] | null>(null);
+  // Libreria fisica (`/tracks`): serve SOLO per validare che il brano
+  // ripristinato dal localStorage esista ancora. Endpoint invariato:
+  // include anche i brani del pirate day (escluderli farebbe resettare
+  // la coda a un utente che sta ascoltando proprio quelli).
+  const [library, setLibrary] = useState<Track[] | null>(null);
+  // Show list: la coda di default quando lo store non ha una coda.
+  const [showList, setShowList] = useState<Track[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadTracks = () => {
     setError(null);
-    setTracks(null);
-    api
-      .get<Track[]>("/tracks")
-      .then((data) => {
-        setTracks(data);
+    setLibrary(null);
+    setShowList(null);
+    Promise.all([
+      api.get<Track[]>("/tracks"),
+      api.get<ShowListResponse>("/playlists/show-list"),
+    ])
+      .then(([lib, sl]) => {
+        setLibrary(lib);
+        setShowList(sl.items);
 
         // Lo stato persistito può contenere un brano che non è più in
-        // libreria (scan/seed lo hanno rimosso). Se il brano ripristinato
-        // non esiste più, ripartiamo dal primo disponibile; se invece esiste
+        // libreria (scan/seed lo hanno rimosso, oppure è un brano del
+        // pirate day whose edition just expired). Se il brano ripristinato
+        // non esiste più, ripartiamo dalla show list; se invece esiste
         // lo teniamo, e l'utente riprende da dove aveva lasciato.
         const restored = usePlayerStore.getState().currentTrack;
         const stillThere =
-          restored !== null && data.some((t) => t.id === restored.id);
+          restored !== null && lib.some((t) => t.id === restored.id);
 
         if (!stillThere) {
-          if (data.length > 0) {
-            setQueue(data, 0);
+          if (sl.items.length > 0) {
+            usePlayerStore.getState().setQueue(sl.items, 0, "show-list");
           } else {
             usePlayerStore.getState().reset();
           }
@@ -129,7 +145,7 @@ export default function PlayerPage() {
   };
 
   // Stato caricamento
-  if (tracks === null && !error) {
+  if (library === null && !error) {
     return (
       <AppShell activeTab="player" onTabChange={onTabChange} hasNotifications={unread > 0}>
         <LoadingView />
@@ -150,7 +166,23 @@ export default function PlayerPage() {
     );
   }
 
-  if (!tracks || tracks.length === 0) {
+  // Coda mostrata: quella dello store. Se è vuota (prima apertura, o brano
+  // rimosso) si mostra la show list, che è la coda di default.
+  const effectiveQueue = queue.length > 0 ? queue : (showList ?? []);
+  // Provenienza della coda mostrata: la coda dello store, oppure la show
+  // list quando la coda è vuota.
+  const effectiveSource: QueueSource =
+    queue.length > 0 ? queueSource : "show-list";
+  // Il cuore dipende dal BRANO IN PLAY (la provenienza salvata nello
+  // store), non dalla lista mostrata: i brani del pirate day non sono
+  // preferitabili (invariante I3).
+  const showFavorite = queueSource !== "pirate-day";
+
+  // NB: niente setQueue() nel body del render (era un side effect durante
+  // il render: in StrictMode veniva eseguito due volte e poteva
+  // sovrascrivere lo stato). La coda viene impostata in loadTracks().
+  const effectiveTrack = currentTrack ?? effectiveQueue[0];
+  if (!effectiveTrack) {
     return (
       <AppShell activeTab="player" onTabChange={onTabChange} hasNotifications={unread > 0}>
         <EmptyState
@@ -162,10 +194,6 @@ export default function PlayerPage() {
     );
   }
 
-  // NB: niente setQueue() nel body del render (era un side effect durante
-  // il render: in StrictMode veniva eseguito due volte e poteva
-  // sovrascrivere lo stato). La coda viene impostata in loadTracks().
-  const effectiveTrack = currentTrack ?? tracks[0];
   const coverUrl = effectiveTrack.coverPath
     ? trackCoverUrl(effectiveTrack.id)
     : null;
@@ -178,7 +206,8 @@ export default function PlayerPage() {
       <PlayerView
         track={effectiveTrack}
         coverUrl={coverUrl}
-        queue={tracks}
+        queue={effectiveQueue}
+        showFavorite={showFavorite}
         isPlaying={isPlaying}
         isMuted={isMuted}
         progress={progress}
@@ -190,7 +219,11 @@ export default function PlayerPage() {
         onSeek={handleSeek}
         onShare={handleShare}
         onMute={() => setMuted(!isMuted)}
-        onPlay={(t) => usePlayerStore.getState().playTrack(t, tracks)}
+        onPlay={(t) =>
+          usePlayerStore
+            .getState()
+            .playTrack(t, effectiveQueue, effectiveSource)
+        }
         peaks={waveformPeaks}
       />
     </AppShell>
@@ -205,6 +238,8 @@ interface PlayerViewProps {
   track: Track;
   coverUrl: string | null;
   queue: Track[];
+  /** False quando la coda è quella del pirate day: niente cuore preferiti. */
+  showFavorite: boolean;
   isPlaying: boolean;
   isMuted: boolean;
   progress: number;
@@ -225,6 +260,7 @@ function PlayerView({
   track,
   coverUrl,
   queue,
+  showFavorite,
   isPlaying,
   isMuted,
   progress,
@@ -273,10 +309,7 @@ function PlayerView({
           >
             <Share2 size={22} />
           </button>
-          <FavoriteButton
-            track={track}
-            size={22}
-          />
+          {showFavorite ? <FavoriteButton track={track} size={22} /> : null}
         </div>
       </div>
 
@@ -365,6 +398,7 @@ function PlayerView({
                   track={item}
                   onPlay={onPlay}
                   highlightPlaying
+                  showFavorite={showFavorite}
                 />
               </li>
             ))}

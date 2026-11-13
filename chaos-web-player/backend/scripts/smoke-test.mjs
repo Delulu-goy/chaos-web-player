@@ -38,6 +38,18 @@ function record(name, ok, detail = "") {
 }
 
 /**
+ * Test saltato (mancano i dati per eseguirlo).
+ * Non è un fallimento: conta a parte nel riepilogo e non fa uscire con
+ * codice 1. Serve per gli scenari "DB vuoto" / "nessuna edizione attiva".
+ */
+function skip(name, detail = "") {
+  stepCounter++;
+  results.push({ name, ok: true, skipped: true, detail });
+  const msg = detail ? ` — SKIP: ${detail}` : " — SKIP";
+  console.log(`  ○ [${stepCounter.toString().padStart(2, "0")}] ${name}${msg}`);
+}
+
+/**
  * Cookie jar minimo: salva solo il cookie `token` (l'unico che ci serve).
  */
 function makeJar() {
@@ -217,16 +229,40 @@ async function run() {
 
   // ── 8. GET /api/tracks (auth) → 200 + array ────────────────────────
   let firstTrackId;
+  let trackIds = [];
   {
     const r = await http("GET", "/api/tracks", { jar });
     const isArray = Array.isArray(r.json);
-    if (isArray && r.json.length > 0) firstTrackId = r.json[0].id;
+    if (isArray) {
+      trackIds = r.json.map((t) => t.id);
+      if (r.json.length > 0) firstTrackId = r.json[0].id;
+    }
     record(
       "GET /api/tracks (auth) → 200 + array",
       r.status === 200 && isArray,
       `status=${r.status}, count=${isArray ? r.json.length : "n/a"}`,
     );
   }
+
+  // ── 8b. GET /api/playlists/pirate-day (edizione attiva) ────────────
+  // Serve a due cose:
+  //   - scegliere un brano "favoritabile" per i test CRUD sui preferiti
+  //     (i brani del pirate day rispondono 403 per design);
+  //   - i check del Pirate Day in fondo allo smoke test.
+  let pirateDay = null;
+  let pirateDayStatus = 0;
+  {
+    const r = await http("GET", "/api/playlists/pirate-day", { jar });
+    pirateDayStatus = r.status;
+    if (r.status === 200) pirateDay = r.json;
+  }
+  const pirateDayTrackIds = new Set(
+    pirateDay && Array.isArray(pirateDay.items)
+      ? pirateDay.items.map((t) => t.id)
+      : [],
+  );
+  // Primo brano che si può mettere nei preferiti (non è del pirate day).
+  const favoritableTrackId = trackIds.find((id) => !pirateDayTrackIds.has(id));
 
   // ── 9. GET /api/tracks senza cookie → 401 ──────────────────────────
   {
@@ -327,10 +363,12 @@ async function run() {
   }
 
   // ── 13. POST /api/favorites/:trackId (solo se ci sono tracks) ──────
-  if (firstTrackId) {
-    const r = await http("POST", `/api/favorites/${firstTrackId}`, { jar });
+  // Si usa un brano NON del pirate day: quelli rispondono 403 per design
+  // (invariante I3) e falserebbero il test CRUD.
+  if (favoritableTrackId) {
+    const r = await http("POST", `/api/favorites/${favoritableTrackId}`, { jar });
     record(
-      `POST /api/favorites/${firstTrackId} → 204`,
+      `POST /api/favorites/${favoritableTrackId} → 204`,
       r.status === 204,
       `status=${r.status}`,
     );
@@ -338,7 +376,7 @@ async function run() {
     // ── 14. GET /api/favorites ora contiene il track ─────────────────
     const r2 = await http("GET", "/api/favorites", { jar });
     const contains =
-      Array.isArray(r2.json) && r2.json.some((t) => t.id === firstTrackId);
+      Array.isArray(r2.json) && r2.json.some((t) => t.id === favoritableTrackId);
     record(
       "GET /api/favorites contiene il track aggiunto",
       r2.status === 200 && contains,
@@ -346,30 +384,30 @@ async function run() {
     );
 
     // ── 15. Idempotenza: POST di nuovo lo stesso track → 204 ─────────
-    const r3 = await http("POST", `/api/favorites/${firstTrackId}`, { jar });
+    const r3 = await http("POST", `/api/favorites/${favoritableTrackId}`, { jar });
     record(
-      `POST /api/favorites/${firstTrackId} (idempotente) → 204`,
+      `POST /api/favorites/${favoritableTrackId} (idempotente) → 204`,
       r3.status === 204,
       `status=${r3.status}`,
     );
 
     // ── 16. DELETE /api/favorites/:trackId → 204 ────────────────────
-    const r4 = await http("DELETE", `/api/favorites/${firstTrackId}`, { jar });
+    const r4 = await http("DELETE", `/api/favorites/${favoritableTrackId}`, { jar });
     record(
-      `DELETE /api/favorites/${firstTrackId} → 204`,
+      `DELETE /api/favorites/${favoritableTrackId} → 204`,
       r4.status === 204,
       `status=${r4.status}`,
     );
 
     // ── 17. DELETE di un track non in favorites → 204 (idempotente) ──
-    const r5 = await http("DELETE", `/api/favorites/${firstTrackId}`, { jar });
+    const r5 = await http("DELETE", `/api/favorites/${favoritableTrackId}`, { jar });
     record(
-      `DELETE /api/favorites/${firstTrackId} (idempotente) → 204`,
+      `DELETE /api/favorites/${favoritableTrackId} (idempotente) → 204`,
       r5.status === 204,
       `status=${r5.status}`,
     );
   } else {
-    record("Add/get/delete favorite (skipped: nessun track)", false, "DB vuoto");
+    skip("Add/get/delete favorite", "nessun brano favoritabile");
   }
 
   // ── 18. GET /api/playlists/show-list → 200 + items ────────────────
@@ -421,16 +459,19 @@ async function run() {
 
     // ── 22. GET /api/notifications riflette lo stato letto ──────────
     const r2 = await http("GET", "/api/notifications", { jar });
-    const found = Array.isArray(r2.json)
-      ? r2.json.find((n) => n.id === firstNotificationId)
-      : null;
+    const all = Array.isArray(r2.json) ? r2.json : [];
+    const found = all.find((n) => n.id === firstNotificationId);
+    // Le notifiche BROADCAST già lette spariscono dalla lista (l'endpoint
+    // mostra solo le non lette): "letto" vuol dire quindi "assente dalla
+    // lista" OPPURE "presente con read=true".
+    const isRead = found ? found.read === true : true;
     record(
-      "GET /api/notifications → primo item ora read=true",
-      r2.status === 200 && found?.read === true,
-      `status=${r2.status}, found=${found ? "yes" : "no"}`,
+      "GET /api/notifications → la notifica marcata non risulta più non letta",
+      r2.status === 200 && isRead,
+      `status=${r2.status}, found=${found ? "yes" : "no (broadcast letta: rimossa dalla lista)"}`,
     );
   } else {
-    record("Mark notification read + verify (skipped: no notifications)", false, "DB vuoto");
+    skip("Mark notification read + verify", "no notifications");
   }
 
   // ── 23. Rate limit headers presenti su /login (sanity) ────────────
@@ -470,10 +511,87 @@ async function run() {
     );
   }
 
+  // ── 26. Pirate Day: la show list non contiene i brani del pirate day,
+  //        i preferiti li rifiutano (403), shape della risposta ─────────
+  //
+  // I brani del pirate day sono quelli dell'edizione attiva, recuperati
+  // al passo 8b. Senza edizione attiva i check sono saltati: non è un
+  // fallimento.
+  {
+    const pdItems =
+      pirateDay && Array.isArray(pirateDay.items) ? pirateDay.items : [];
+    const pdIds = pirateDayTrackIds;
+
+    // Shape check della risposta pirate-day
+    if (pirateDayStatus === 404) {
+      skip("GET /api/playlists/pirate-day → shape {title, curator, items[], endsAt}", "nessuna edizione attiva");
+    } else {
+      const okShape =
+        pirateDayStatus === 200 &&
+        typeof pirateDay?.title === "string" &&
+        pirateDay?.curator !== null &&
+        typeof pirateDay?.curator === "object" &&
+        Array.isArray(pdItems) &&
+        typeof pirateDay?.endsAt === "string";
+      record(
+        "GET /api/playlists/pirate-day → shape {title, curator, items[], endsAt}",
+        okShape,
+        `status=${pirateDayStatus}`,
+      );
+    }
+
+    // Show list ∩ track(playlist PIRATE_DAY) = ∅
+    const sl = await http("GET", "/api/playlists/show-list", { jar });
+    const slIds = new Set(
+      (Array.isArray(sl.json?.items) ? sl.json.items : []).map((t) => t.id),
+    );
+    if (pdIds.size === 0) {
+      skip("show list ∩ track(PIRATE_DAY) = ∅", "nessuna edizione attiva");
+    } else {
+      const overlap = [...slIds].filter((id) => pdIds.has(id));
+      record(
+        "show list ∩ track(PIRATE_DAY) = ∅",
+        sl.status === 200 && overlap.length === 0,
+        `status=${sl.status}, overlap=${overlap.length}`,
+      );
+    }
+
+    // POST /api/favorites/<track pirate day> → 403
+    if (pdIds.size === 0) {
+      skip("POST /api/favorites/<track pirate day> → 403", "nessuna edizione attiva");
+    } else {
+      const pdTrackId = [...pdIds][0];
+      const r = await http("POST", `/api/favorites/${pdTrackId}`, { jar });
+      record(
+        `POST /api/favorites/${pdTrackId} (track pirate day) → 403`,
+        r.status === 403,
+        `status=${r.status}`,
+      );
+    }
+
+    // GET /api/favorites non contiene track pirate day
+    if (pdIds.size === 0) {
+      skip("GET /api/favorites senza track pirate day", "nessuna edizione attiva");
+    } else {
+      const fav = await http("GET", "/api/favorites", { jar });
+      const leaked = Array.isArray(fav.json)
+        ? fav.json.filter((t) => pdIds.has(t.id))
+        : [];
+      record(
+        "GET /api/favorites senza track pirate day",
+        fav.status === 200 && leaked.length === 0,
+        `status=${fav.status}, trovati=${leaked.length}`,
+      );
+    }
+  }
+
   // ── Summary ────────────────────────────────────────────────────────
-  const passed = results.filter((r) => r.ok).length;
-  const failed = results.length - passed;
-  console.log(`\n[smoke] summary: ${passed}/${results.length} passed, ${failed} failed`);
+  const failed = results.filter((r) => !r.ok).length;
+  const skippedCount = results.filter((r) => r.skipped).length;
+  const passed = results.length - failed - skippedCount;
+  console.log(
+    `\n[smoke] summary: ${passed}/${passed + failed} passed, ${failed} failed, ${skippedCount} skipped`,
+  );
 
   if (failed > 0) {
     console.error("\n[smoke] FALLIMENTI:");

@@ -2,11 +2,13 @@
 //
 // Crea (idempotente):
 //   1. Admin user (se SEED_ADMIN_EMAIL + SEED_ADMIN_PASSWORD sono settati)
-//   2. Playlist "show-list" (vuota)
-//   3. Playlist "pirate-day-23" con curator + descrizione + endsAt = +24h
-//      (così /api/playlists/pirate-day ritorna 200 alla prima apertura
-//      del frontend e l'utente vede la pagina completa, non l'empty state)
-//   4. Cinque notifiche demo (broadcast), testo "lorem-ish" come da screenshot
+//   2. Playlist "show-list" (vuota: i brani li inserisce `scan.js`)
+//   3. Cinque notifiche demo (broadcast), testo "lorem-ish" come da screenshot
+//
+// NON crea più l'edizione "pirate-day-23": da Fase 10 il Pirate Day è
+// pubblicato da `scripts/pirate-day.js` a partire dal manifest
+// (`private/audio/pirate-day/manifest.json`). Il seed non deve più essere
+// usato per il Pirate Day.
 //
 // Uso:
 //   node --experimental-strip-types scripts/seed.js
@@ -20,27 +22,14 @@
 // prima volta (durante il setup), poi rimuoverla o ruotarla. Lo script
 // non aggiorna password di admin esistenti.
 
-import fs from "node:fs";
-import path from "node:path";
 import bcrypt from "bcrypt";
-import { PrismaClient } from "../generated/prisma/client.ts";
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { loadEnv, optionalEnv, timestamp } from "./_shared.mjs";
+import { makePrisma } from "./lib/prisma.mjs";
+import { normalizeCuratorLinks } from "./lib/curator.mjs";
 
 loadEnv();
 
 const BCRYPT_COST = 12;
-
-function makePrisma() {
-  const adapter = new PrismaMariaDb({
-    host: process.env.DB_HOST ?? "127.0.0.1",
-    port: parseInt(process.env.DB_PORT ?? "3306", 10),
-    user: process.env.DB_USER ?? "chaos_app",
-    password: process.env.DB_PASSWORD ?? "devpass",
-    database: process.env.DB_NAME ?? "chaos_radio",
-  });
-  return new PrismaClient({ adapter, log: ["warn", "error"] });
-}
 
 async function seedAdmin(prisma) {
   const adminEmail = (optionalEnv("SEED_ADMIN_EMAIL", "admin@chaosroom.online") ?? "")
@@ -102,54 +91,44 @@ async function seedShowList(prisma) {
   return playlist;
 }
 
-async function seedPirateDay(prisma) {
-  const now = new Date();
-  // Pirate Day "in onda" da 1h fa a tra 24h: dà tempo all'utente di vederlo
-  // dal momento del seed e di apprezzare il countdown live.
-  const startsAt = new Date(now.getTime() - 60 * 60 * 1000);
-  const endsAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-  const description =
-    "**A new transmission begins.** Twenty-four hours of pirate frequencies, broadcasts from somewhere off the coast.\n\n" +
-    "Curated by **DJ Skeleton** with selections from the deep archive. " +
-    "Tune in, stay awhile. The signal is clearer after dark.";
-
-  const curatorLinks = [
-    { type: "music", url: "https://example.com/dj-skeleton" },
-    { type: "play", url: "https://example.com/dj-skeleton/live" },
-    { type: "cloud", url: "https://soundcloud.com/dj-skeleton" },
-    { type: "camera", url: "https://instagram.com/dj-skeleton" },
-  ];
-
-  const playlist = await prisma.playlist.upsert({
-    where: { slug: "pirate-day-23" },
-    create: {
-      slug: "pirate-day-23",
-      title: "PIRATE DAY #23",
-      kind: "PIRATE_DAY",
-      curatorName: "DJ Skeleton",
-      curatorRole: "Resident Curator",
-      curatorAvatar: null,
-      curatorLinks,
-      description,
-      startsAt,
-      endsAt,
-    },
-    update: {
-      title: "PIRATE DAY #23",
-      kind: "PIRATE_DAY",
-      curatorName: "DJ Skeleton",
-      curatorRole: "Resident Curator",
-      curatorLinks,
-      description,
-      // Non forziamo startsAt/endsAt su update: lo script è idempotente,
-      // se la Pirate Day esiste già, NON rinnoviamo i timer.
-    },
+/**
+ * Normalizza i `curator_links` delle playlist PIRATE_DAY già presenti.
+ *
+ * Il vecchio seed scriveva `[{type, url}]`, formato incompatibile con il
+ * frontend: `CuratorCard` faceva crash (`ICONS["0"]` undefined). Qui il
+ * formato viene corretto una volta sola (idempotente).
+ */
+async function fixCuratorLinks(prisma) {
+  const playlists = await prisma.playlist.findMany({
+    where: { kind: "PIRATE_DAY" },
+    select: { id: true, slug: true, curatorLinks: true },
   });
-  console.log(
-    `[seed] ✓ playlist pirate-day-23 (id=${playlist.id}, endsAt=${playlist.endsAt?.toISOString() ?? "null"})`,
-  );
-  return playlist;
+
+  let fixed = 0;
+  for (const playlist of playlists) {
+    const links = playlist.curatorLinks;
+    const isLegacyArray = Array.isArray(links);
+    const isEmptyObject =
+      links &&
+      typeof links === "object" &&
+      !isLegacyArray &&
+      Object.keys(links).length === 0;
+    if (!isLegacyArray && !isEmptyObject) continue;
+
+    const normalized = normalizeCuratorLinks(links);
+    await prisma.playlist.update({
+      where: { id: playlist.id },
+      data: { curatorLinks: normalized },
+    });
+    fixed++;
+    console.log(
+      `[seed] ✓ curator_links normalizzati per ${playlist.slug}`,
+    );
+  }
+  if (fixed === 0) {
+    console.log("[seed] ✓ curator_links già nel formato giusto");
+  }
 }
 
 async function seedNotifications(prisma) {
@@ -196,7 +175,7 @@ async function main() {
   try {
     await seedAdmin(prisma);
     await seedShowList(prisma);
-    await seedPirateDay(prisma);
+    await fixCuratorLinks(prisma);
     await seedNotifications(prisma);
     console.log(`[seed] ✓ done ${timestamp()}`);
   } finally {

@@ -6,12 +6,20 @@ import { Router } from "express";
 import prisma from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
+import { isPirateDayPath, pirateDayTrackIds } from "../lib/pirateDay.js";
 
 const router = Router();
 
 router.use(requireAuth);
 
 // GET /api/playlists/show-list
+//
+// I brani del Pirate Day NON devono mai comparire qui (invariante I1).
+// Il filtro è doppio:
+//   (a) per PATH  — il file del brano è dentro PIRATE_DAY_DIR;
+//   (b) per DATI  — il brano è referenziato da una playlist PIRATE_DAY
+//       (copre playlist_items inquinati a mano e resta valido anche se
+//       la cartella cambia tra un deploy e l'altro).
 router.get("/show-list", async (req, res, next) => {
   try {
     const playlist = await prisma.playlist.findUnique({
@@ -27,9 +35,15 @@ router.get("/show-list", async (req, res, next) => {
       // Non inizializzata: array vuoto invece di 404 per non rompere il frontend
       return res.json({ title: "Show List", items: [] });
     }
+
+    const pirateDayIds = await pirateDayTrackIds();
+    const items = playlist.items
+      .map((i) => i.track)
+      .filter((t) => !isPirateDayPath(t.filePath) && !pirateDayIds.has(t.id));
+
     res.json({
       title: playlist.title,
-      items: playlist.items.map((i) => i.track),
+      items,
     });
   } catch (err) {
     next(err);
@@ -38,7 +52,8 @@ router.get("/show-list", async (req, res, next) => {
 
 // GET /api/playlists/pirate-day
 // Restituisce la playlist PIRATE_DAY attualmente attiva (endsAt > now).
-// Se ce ne sono più, prende la più recente. Se nessuna attiva, restituisce 404.
+// Se ce ne sono più, prende la più recente (startsAt desc). Se nessuna
+// attiva, restituisce 404.
 router.get("/pirate-day", async (req, res, next) => {
   try {
     const now = new Date();
@@ -53,7 +68,7 @@ router.get("/pirate-day", async (req, res, next) => {
           orderBy: { position: "asc" },
         },
       },
-      orderBy: { endsAt: "asc" },
+      orderBy: { startsAt: "desc" },
     });
 
     if (!playlist) {

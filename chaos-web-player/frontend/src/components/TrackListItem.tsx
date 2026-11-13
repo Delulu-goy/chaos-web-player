@@ -27,12 +27,19 @@ interface TrackListItemProps {
   onPlay?: (track: Track) => void;
   /** Se true, evidenzia la riga del brano attualmente in play. */
   highlightPlaying?: boolean;
+  /**
+   * Se false, il cuore dei preferiti non viene renderizzato.
+   * Default true. La tab Pirate Day passa false: i brani del pirate day
+   * non sono preferitabili (invariante I3).
+   */
+  showFavorite?: boolean;
 }
 
 export default function TrackListItem({
   track,
   onPlay,
   highlightPlaying = false,
+  showFavorite = true,
 }: TrackListItemProps) {
   const coverUrl = track.coverPath
     ? trackCoverUrl(track.id)
@@ -89,9 +96,11 @@ export default function TrackListItem({
       </div>
 
       {/* Favorite button — z-10 per restare sopra l'overlay */}
-      <span className="relative z-10">
-        <FavoriteButton track={track} />
-      </span>
+      {showFavorite ? (
+        <span className="relative z-10">
+          <FavoriteButton track={track} />
+        </span>
+      ) : null}
     </div>
   );
 }

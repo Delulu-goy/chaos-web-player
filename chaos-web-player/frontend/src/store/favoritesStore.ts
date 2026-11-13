@@ -92,8 +92,18 @@ export const useFavoritesStore = create<FavoritesState>((set, get) => ({
       set({ favoriteIds: previousIds, items: previousItems });
       if (err instanceof ApiError) {
         console.warn(`Favorite[${track.id}] toggle failed:`, err.code);
+        if (err.status === 403) {
+          // I brani del Pirate Day non sono preferitabili: l'API risponde
+          // 403 (invariante I3). Toast dedicato invece di quello generico.
+          toast.error(
+            "I brani del Pirate Day non si possono salvare nei preferiti.",
+          );
+        } else {
+          toast.error("Impossibile aggiornare i preferiti. Riprova.");
+        }
+      } else {
+        toast.error("Impossibile aggiornare i preferiti. Riprova.");
       }
-      toast.error("Impossibile aggiornare i preferiti. Riprova.");
       throw err;
     }
   },

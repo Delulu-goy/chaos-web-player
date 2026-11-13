@@ -8,6 +8,8 @@
     "start": "node --experimental-strip-types src/index.js",
     "dev": "node --env-file=.env --experimental-strip-types --watch src/index.js",
     "scan": "node --env-file=.env --experimental-strip-types scripts/scan.js",
+    "pirate-day": "node --env-file=.env --experimental-strip-types scripts/pirate-day.js",
+    "pirate-day:init": "node --env-file=.env --experimental-strip-types scripts/pirate-day-init.js",
     "waveforms": "node --env-file=.env --experimental-strip-types scripts/generate-waveforms.js",
     "seed": "node --env-file=.env --experimental-strip-types scripts/seed.js",
     "test:smoke": "node scripts/smoke-test.mjs",

@@ -137,6 +137,27 @@ function FavoritesMount({ children }: { children: React.ReactNode }) {
     }
   }, [user, fetchFavorites, resetFavorites]);
 
+  // Refetch quando l'utente torna sull'app (visibility/focus).
+  //
+  // Serve a far sparire i brani cancellati durante la sessione (invariante
+  // I4): alla scadenza di un'edizione pirate day i file vengono rimossi e
+  // i track spariscono dal DB con cascade sui preferiti. Senza il refetch
+  // il cuore resterebbe lì fino al prossimo reload.
+  useEffect(() => {
+    if (!user) return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        void fetchFavorites();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [user, fetchFavorites]);
+
   return <>{children}</>;
 }
 

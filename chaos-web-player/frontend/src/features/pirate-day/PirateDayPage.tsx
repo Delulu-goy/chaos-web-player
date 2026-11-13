@@ -6,7 +6,7 @@
 //
 // Fetch: GET /api/playlists/pirate-day (restituisce 404 se nessuna playlist attiva).
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "../../components/AppShell";
 import type { TabKey } from "../../components/BottomNav";
@@ -90,9 +90,30 @@ export default function PirateDayPage() {
     return () => window.clearInterval(id);
   }, [data?.endsAt]);
 
+  // Refetch quando il countdown arriva a 0.
+  //
+  // Alla scadenza l'edizione viene ripulita dal server (file cancellati,
+  // track rimossi dal DB): la lista mostrata non può più esistere. Si
+  // ricarica → l'API risponde 404 → la pagina passa all'empty state
+  // "Torna più tardi: al momento Pirate Day non è in onda".
+  const expiryHandled = useRef(false);
+  useEffect(() => {
+    if (!data?.endsAt) return;
+    const endsMs = new Date(data.endsAt).getTime();
+    if (now < endsMs) {
+      expiryHandled.current = false;
+      return;
+    }
+    if (expiryHandled.current) return;
+    expiryHandled.current = true;
+    loadPlaylist();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [now, data?.endsAt]);
+
   const handlePlay = (track: Track) => {
     if (!data) return;
-    usePlayerStore.getState().playTrack(track, data.items);
+    // La coda è l'edizione pirate day: mai una miscela con la show list.
+    usePlayerStore.getState().playTrack(track, data.items, "pirate-day");
     navigate("/player");
   };
 
@@ -228,6 +249,7 @@ export default function PirateDayPage() {
               <TrackListItem
                 track={track}
                 onPlay={handlePlay}
+                showFavorite={false}
               />
             </li>
           ))}

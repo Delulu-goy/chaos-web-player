@@ -7,12 +7,17 @@ import { Router } from "express";
 import prisma from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
+import { isPirateDayTrack, pirateDayTrackIds } from "../lib/pirateDay.js";
 
 const router = Router();
 
 router.use(requireAuth);
 
 // GET /api/favorites
+//
+// I brani del Pirate Day non sono preferitabili (invariante I3): vengono
+// filtrati anche in lettura, così i preferiti messi PRIMA della regola
+// (o inseriti a mano) spariscono.
 router.get("/", async (req, res, next) => {
   try {
     const favorites = await prisma.favorite.findMany({
@@ -20,8 +25,11 @@ router.get("/", async (req, res, next) => {
       include: { track: true },
       orderBy: { createdAt: "desc" },
     });
+    const pirateDayIds = await pirateDayTrackIds();
     // Restituiamo solo l'oggetto track (frontend si aspetta [Track])
-    res.json(favorites.map((f) => f.track));
+    res.json(
+      favorites.map((f) => f.track).filter((t) => !pirateDayIds.has(t.id)),
+    );
   } catch (err) {
     next(err);
   }
@@ -39,6 +47,13 @@ router.post("/:trackId", async (req, res, next) => {
     const track = await prisma.track.findUnique({ where: { id: trackId } });
     if (!track) {
       throw new HttpError(404, "not_found");
+    }
+
+    // I brani del Pirate Day non si possono salvare nei preferiti.
+    // Il frontend nasconde il cuore, ma la regola va garantita qui:
+    // richiesta diretta o client PWA vecchio passerebbero.
+    if (await isPirateDayTrack(trackId)) {
+      throw new HttpError(403, "forbidden");
     }
 
     // create o no-op se esiste già (P2002 = unique violation, ignorata)

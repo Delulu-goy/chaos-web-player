@@ -19,6 +19,18 @@ import type { Track } from "../types/api";
 const PLAYER_STORAGE_KEY = "chaos-radio-player";
 const PERSIST_THROTTLE_MS = 3000;
 
+/**
+ * Provenienza della coda.
+ *
+ * - "show-list"  → la coda è la show list (brani della libreria).
+ * - "pirate-day" → la coda è l'edizione Pirate Day corrente.
+ *
+ * La coda è SEMPRE una delle due (invariante I5): mai una miscela. Il
+ * PlayerPage usa questa informazione per non mostrare il cuore dei
+ * preferiti quando suona un brano del Pirate Day (che non è preferitabile).
+ */
+export type QueueSource = "show-list" | "pirate-day";
+
 const localStorage = getLocalStorage();
 
 const playerStorage = createJSONStorage(() =>
@@ -31,6 +43,8 @@ interface PlayerState {
   currentTrack: Track | null;
   queue: Track[];
   queueIndex: number;
+  /** Provenienza della coda (show list o pirate day). */
+  queueSource: QueueSource;
 
   isPlaying: boolean;
   isMuted: boolean;
@@ -38,8 +52,12 @@ interface PlayerState {
   progress: number; // 0..1 (derivato da audio.currentTime / duration)
 
   // Actions
-  setQueue: (tracks: Track[], startIndex?: number) => void;
-  playTrack: (track: Track, queue?: Track[]) => void;
+  setQueue: (
+    tracks: Track[],
+    startIndex?: number,
+    source?: QueueSource,
+  ) => void;
+  playTrack: (track: Track, queue?: Track[], source?: QueueSource) => void;
   toggle: () => void;
   setPlaying: (b: boolean) => void;
   next: () => void;
@@ -56,15 +74,21 @@ export const usePlayerStore = create<PlayerState>()(
       currentTrack: null,
       queue: [],
       queueIndex: -1,
+      queueSource: "show-list",
 
       isPlaying: false,
       isMuted: false,
       volume: 1,
       progress: 0,
 
-      setQueue: (tracks, startIndex = 0) => {
+      setQueue: (tracks, startIndex = 0, source = "show-list") => {
         if (tracks.length === 0) {
-          set({ currentTrack: null, queue: [], queueIndex: -1 });
+          set({
+            currentTrack: null,
+            queue: [],
+            queueIndex: -1,
+            queueSource: source,
+          });
           return;
         }
         const idx = Math.max(0, Math.min(startIndex, tracks.length - 1));
@@ -72,18 +96,20 @@ export const usePlayerStore = create<PlayerState>()(
           queue: tracks,
           queueIndex: idx,
           currentTrack: tracks[idx],
+          queueSource: source,
           progress: 0,
           isPlaying: true,
         });
       },
 
-      playTrack: (track, queue) => {
+      playTrack: (track, queue, source = "show-list") => {
         const finalQueue = queue ?? [track];
         const idx = finalQueue.findIndex((t) => t.id === track.id);
         set({
           queue: finalQueue,
           queueIndex: idx >= 0 ? idx : 0,
           currentTrack: track,
+          queueSource: source,
           progress: 0,
           isPlaying: true,
         });
@@ -130,6 +156,7 @@ export const usePlayerStore = create<PlayerState>()(
           currentTrack: null,
           queue: [],
           queueIndex: -1,
+          queueSource: "show-list",
           isPlaying: false,
           progress: 0,
         }),
@@ -144,6 +171,10 @@ export const usePlayerStore = create<PlayerState>()(
         queue: state.queue,
         queueIndex: state.queueIndex,
         currentTrack: state.currentTrack,
+        // La provenienza della coda viaggia con lei: dopo un reload
+        // l'utente deve ritrovare "sto ascoltando il pirate day" (e non
+        // vedere il cuore dei preferiti su un brano non preferitabile).
+        queueSource: state.queueSource,
         progress: state.progress,
         isMuted: state.isMuted,
         volume: state.volume,

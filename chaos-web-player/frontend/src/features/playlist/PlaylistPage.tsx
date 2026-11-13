@@ -1,5 +1,8 @@
 // Chaos Radio — PlaylistPage
-// Titolo "SHOW LIST" — lista di tutti i brani disponibili.
+// Titolo "SHOW LIST" — la playlist principale della radio.
+// I brani arrivano da `GET /api/playlists/show-list` (la playlist mantenuta
+// dallo scanner), NON dall'intera libreria: i brani del Pirate Day non
+// devono mai comparire qui.
 // Click su un brano → avvia la riproduzione (vai al player).
 
 import { useEffect, useState } from "react";
@@ -12,24 +15,24 @@ import TrackListItem from "../../components/TrackListItem";
 import { usePlayerStore } from "../../store/playerStore";
 import { useNotificationsStore } from "../../store/notificationsStore";
 import { api, ApiError } from "../../lib/api";
-import type { Track } from "../../types/api";
+import type { ShowListResponse, Track } from "../../types/api";
 
 export default function PlaylistPage() {
   const navigate = useNavigate();
   const unread = useNotificationsStore((s) => s.unreadCount());
   const onTabChange = (k: TabKey) => navigate(`/${k}`);
 
-  const [tracks, setTracks] = useState<Track[] | null>(null);
+  const [items, setItems] = useState<ShowListResponse["items"] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch brani
+  // Fetch della show list
   const loadTracks = () => {
     setError(null);
-    setTracks(null);
+    setItems(null);
     api
-      .get<Track[]>("/tracks")
+      .get<ShowListResponse>("/playlists/show-list")
       .then((data) => {
-        setTracks(data);
+        setItems(data.items);
       })
       .catch((err) => {
         setError(
@@ -45,8 +48,9 @@ export default function PlaylistPage() {
   }, []);
 
   const handlePlay = (track: Track) => {
-    if (!tracks) return;
-    usePlayerStore.getState().playTrack(track, tracks);
+    if (!items) return;
+    // La coda è la show list: mai una miscela con il pirate day.
+    usePlayerStore.getState().playTrack(track, items, "show-list");
     navigate("/player");
   };
 
@@ -58,7 +62,7 @@ export default function PlaylistPage() {
     >
       <h1 className="text-3xl font-bold tracking-tight">SHOW LIST</h1>
 
-      {tracks === null && !error && <LoadingView />}
+      {items === null && !error && <LoadingView />}
 
       {error && (
         <div className="mt-8">
@@ -71,7 +75,7 @@ export default function PlaylistPage() {
         </div>
       )}
 
-      {tracks && tracks.length === 0 && (
+      {items && items.length === 0 && (
         <div className="mt-8">
           <EmptyState
             variant="empty"
@@ -81,9 +85,9 @@ export default function PlaylistPage() {
         </div>
       )}
 
-      {tracks && tracks.length > 0 && (
+      {items && items.length > 0 && (
         <ul className="mt-6 flex flex-col gap-6">
-          {tracks.map((track) => (
+          {items.map((track) => (
             <li key={track.id}>
               <TrackListItem
                 track={track}

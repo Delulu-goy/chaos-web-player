@@ -12,6 +12,30 @@ const ICONS = {
   instagram: Camera,
 } as const;
 
+type CuratorLinkKey = keyof typeof ICONS;
+
+/**
+ * Normalizza i link del curatore.
+ *
+ * Restituisce solo le piattaforme note (quelle con un'icona) e solo i
+ * valori stringa. I dati legacy in formato array (`[{type, url}]`, usato
+ * dal vecchio seed) farebbero crashare il render (`ICONS["0"]` undefined):
+ * qui vengono scartati.
+ */
+function normalizeLinks(links: CuratorLinks | null | undefined) {
+  if (!links || typeof links !== "object") return [];
+  const raw = links as unknown as Record<string, unknown>;
+  if (Array.isArray(raw)) return [];
+
+  const entries: Array<[CuratorLinkKey, string]> = [];
+  for (const [platform, value] of Object.entries(raw)) {
+    if (!(platform in ICONS)) continue;
+    if (typeof value !== "string" || !value.trim()) continue;
+    entries.push([platform as CuratorLinkKey, value]);
+  }
+  return entries;
+}
+
 interface CuratorCardProps {
   curator: Curator;
 }
@@ -19,12 +43,7 @@ interface CuratorCardProps {
 export default function CuratorCard({ curator }: CuratorCardProps) {
   if (!curator.name) return null;
 
-  const links: CuratorLinks = curator.links ?? {};
-  const linkEntries = (
-    Object.entries(links).filter(([, url]) => Boolean(url)) as Array<
-      [keyof CuratorLinks, string]
-    >
-  );
+  const linkEntries = normalizeLinks(curator.links);
 
   return (
     <div className="border-t border-white/10 pt-6">
