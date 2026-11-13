@@ -35,6 +35,20 @@ chaos-web-player/
 | 5.5 — Pirate Day | ✅ | Countdown live + progress bar + curator + descrizione con **highlight** |
 | 6 — PWA & polish | ✅ | Toast/snackbar globale, LoadingView consistente, EmptyState con varianti, safe-area iOS, auto-logout su 401, feedback errori rete/audio |
 | 7 — Deploy | ✅ | **Live su radio.chaosroom.online** |
+| 8 — Hardening & bugfix | 🟡 | E2E smoke test automatico, Range request reali sullo stream, race condition del player, preferiti a fonte unica, persistenza del player, waveform reali per brano |
+
+### Ultimi interventi (sessione 2026-11-12/13)
+
+| Area | Cosa |
+|---|---|
+| **Range request sullo stream** | La route dichiarava `Accept-Ranges: bytes` ma ignorava l'header: ogni seek riscaricava l'intero MP3 (14,5 MB). Ora `res.sendFile()` → `206 Partial Content` + `Content-Range`, e lo stream viene chiuso quando il client abortisce |
+| **Race condition del player** | `AbortError` di `play()` trattato come errore fatale (metteva in pausa la traccia appena scelta), `pause` event di `load()` che desincronizzava lo store, `onPlay` che resuscitava la riproduzione dopo un pause. Risolti con generation counter, guard su `readyState` e `.then()` guard sul desired state |
+| **Preferiti** | Il cuore teneva uno stato locale duplicato e `useFavoritesStore.toggle()` era codice morto; sul player partiva vuoto e un click su un brano già preferito faceva POST invece di DELETE. Ora lo store è l'unica fonte di verità |
+| **Persistenza del player** | Dopo un reload si perdeva brano, coda e posizione. Ora `persist` con scritture throttled a 3 s e seek alla posizione salvata |
+| **Waveform reali** | Era un pattern random identico per ogni brano. Ora i picchi sono calcolati lato server (decoder WASM mpg123: su Stellar non c'è ffmpeg) e il frontend li adatta alla larghezza del contenitore |
+| **Area di click** | Solo la cover avviava la riproduzione: ora è cliccabile tutta la riga (pattern dello "stretched button") |
+| **Lock screen** | Su schermo bloccato i controlli sparivano durante il cambio traccia. Precaricata anche la traccia precedente, rimosso il doppio reset dell'elemento audio, `playbackState`/`positionState` espliciti nella MediaSession |
+| **Errori di parsing** | `JSON.parse` non protetto: una risposta HTML del proxy lanciava `SyntaxError` invece di `ApiError` e faceva sfuggire lo status HTTP reale |
 
 ## Quickstart (sviluppo locale Windows + WSL)
 
@@ -164,12 +178,25 @@ Queste sono state tutte risolte e documentate per evitare di rifare gli stessi e
 
 6. **`.gitignore` locale di Vite annulla l'eccezione di deploy** (commit `475ad1c`): `chaos-web-player/frontend/.gitignore` (Vite-generated) ha `dist/` che **sovrascrive** l'eccezione `!chaos-web-player/frontend/dist/` del `.gitignore` root. Risultato: i vecchi `dist/assets/*` e i font `.woff/.woff2` già tracciati venivano committati, ma i **nuovi bundle** generati da `npm run build` venivano bloccati silenziosamente. L'`index.html` committato referenziava i nuovi hash, ma quei file non esistevano nel repo → 404 in produzione → pagina completamente bianca. Fix: aggiunto `!dist/` anche nel `.gitignore` locale per ripristinare l'eccezione. **Regola operativa**: dopo ogni `npm run build`, controllare con `git ls-files --others --exclude-standard dist/`: se è vuoto ma `dist/index.html` cita nuovi hash `index-XXXX.js/.css`, il `.gitignore` sta bloccando i nuovi asset — aggiungere `!dist/` nel `.gitignore` locale della sotto-cartella.
 
+7. **Il deploy rilassava il backend solo alla fine**: `.cpanel.yml` ricostruisce il frontend (ci mette 1-2 minuti) e solo DOPO tocca `tmp/restart.txt`. Verificando `/api/debug` troppo presto si vede il processo **vecchio** (stesso `pid`, uptime in crescita) e si conclude che "il deploy non ha funzionato". **Regola operativa**: dopo "Update from Remote", attendere che il deploy finisca (il frontend aggiornato è il segnale che la build è quasi conclusa) e poi verificare. Il segnale che il backend è stato ricaricato è un `pid` diverso e `uptime` azzerato.
+
+8. **`Accept-Ranges: bytes` senza implementarlo è peggio che non dichiararlo**: la route dichiarava il supporto Range ma ignorava l'header, così il browser si metteva in modalità range e riceveva un 200 pieno — un download da 14,5 MB a ogni seek. Dichiarare `Accept-Ranges` solo se si risponde davvero con 206.
+
+9. **Su Stellar non c'è ffmpeg**, e i brani sono CBR 320 kbps: l'euristica "dimensione del frame ∝ energia" dà una linea piatta. Per generare waveform reali serve un decoder in-process (`mpg123-decoder`, build WASM). Verificare sempre cosa c'è sull'host (`GET /api/debug` → `tools`).
+
+10. **Le migrazioni su Stellar non sono affidabili**: `prisma migrate deploy` usa lo stesso motore del client WASM di Prisma 7, che su quell'hosting non si scarica. Per questo la waveform è un **file** in `private/` e non una colonna: una colonna mancante farebbe fallire tutte le query su `tracks` e porterebbe giù l'app. Prima di aggiungere una colonna, pensare a cosa succede se la migration non viene applicata.
+
+11. **`private/` non era gitignorato**: i MP3 originali e i file derivati (cover, waveform) avrebbero potuto finire nel repo. Ora è in `backend/.gitignore`.
+
 ## Script utili
 
 | Path       | Script       | Azione |
 |------------|--------------|--------|
 | `backend/` | `npm run dev` | `tsx` su 3001 (WSL, dev) |
 | `backend/` | `npm start` | `tsx src/index.js` in produzione (Node 20+ e 22+) |
+| `backend/` | `npm run scan` | scansiona i MP3, estrae tag/cover e calcola le waveform mancanti |
+| `backend/` | `npm run waveforms` | calcola solo le waveform mancanti (`-- --force` per ricalcolare tutte) |
+| `backend/` | `npm run test:smoke` | E2E smoke test contro il server (auth, tracks, favorites, playlists, notifications, Range request, waveform) |
 | `backend/` | `npm run prisma:studio` | GUI Prisma per ispezionare il DB |
 | `frontend/`| `npm run dev` | Vite dev server su 5173 (proxy `/api` a :3001) |
 | `frontend/`| `npm run build` | build produzione in `dist/` (committato) |

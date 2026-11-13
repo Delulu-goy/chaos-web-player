@@ -72,7 +72,8 @@ Dopo un riavvio di WSL, rieseguire il blocco con il nuovo `$wslIp`.
 |---|---|
 | `npm run dev` | `tsx` su `src/index.js` (dev, con `tsx` watch) |
 | `npm start` | `tsx src/index.js` (produzione) |
-| `npm run scan` | scansiona `private/audio/*.mp3`, estrae tag ID3 + cover, sincronizza `tracks` (vedi `scripts/scan.js`) |
+| `npm run scan` | scansiona `private/audio/*.mp3`, estrae tag ID3 + cover, sincronizza `tracks` e calcola le waveform mancanti (vedi `scripts/scan.js`) |
+| `npm run waveforms` | calcola la waveform (picchi) dei brani che non ce l'hanno ancora — vedi `scripts/generate-waveforms.js`. `-- --force` ricalcola tutti |
 | `npm run seed` | popola DB con dati demo (admin, playlist show-list, playlist pirate-day-23, 5 notifiche) — vedi `scripts/seed.js` |
 | `npm run test:smoke` | E2E smoke test (auth, tracks, favorites, playlists, notifications). Punto 8 del piano. |
 | `npm run prisma:studio` | GUI Prisma per ispezionare il DB |
@@ -90,6 +91,20 @@ Base: `/api`. Tutti richiedono autenticazione (cookie `token` httpOnly) tranne:
 - `GET /api/health` (debug: restituisce info sul processo)
 
 Vedi `plans/chaos-radio-player.md` sezione 6 per il contratto completo.
+
+### Tracks
+
+```
+GET /api/tracks                    (auth) → 200 [Track] ordinati per addedAt desc
+GET /api/tracks/:id                (auth) → 200 Track | 404
+GET /api/tracks/:id/stream         (auth) → 200 audio/mpeg, Range supportato → 206
+GET /api/tracks/:id/cover          (auth) → 200 image/jpeg | 404
+GET /api/tracks/:id/waveform       (auth) → 200 { waveform: "<base64>" } | 404
+```
+
+`GET /api/tracks/:id/stream` risponde **206 Partial Content** a una richiesta `Range` (non 200 con il file intero): vedi la sezione hardening più in basso.
+
+`GET /api/tracks/:id/waveform` restituisce i 300 picchi del brano serializzati in base64 (400 caratteri). Restituisce 404 se la waveform non è ancora stata calcolata: in quel caso il frontend mostra la waveform decorativa di fallback.
 
 ### Auth flow
 
@@ -172,8 +187,26 @@ Env opzionali:
 - `MUSIC_DIR` (default: `private/audio`) — dove cercare i `.mp3`
 - `COVERS_DIR` (default: `private/covers`) — dove salvare le cover estratte
 - `SCAN_BATCH_SIZE` (default: 20) — file processati in parallelo per batch
+- `WAVEFORMS_DIR` (default: `private/waveforms`) — dove salvare i picchi delle waveform
+- `WAVEFORM_TIMEOUT_MS` (default: 60000) — timeout per brano durante il calcolo della waveform
 
 Lo script è idempotente: rieseguendolo non duplica righe (UPSERT su `file_path`) e cancella i track orfani (file presenti in DB ma non più su disco). Vedere `scripts/README.md` per i dettagli.
+
+## Waveform dei brani (picchi)
+
+Il player mostra la forma d'onda reale di ogni brano: 300 bucket con l'ampiezza del segmento corrispondente, serializzati in base64 e salvati in `private/waveforms/waveform-<trackId>.txt`.
+
+**Dove viene calcolata**: dallo `scan` (e da `npm run waveforms`), che ricalcola **solo** i brani senza file. Dopo il primo passaggio non costa più nulla.
+
+**Come viene calcolata**: su Stellar **non c'è ffmpeg** (verificabile con `GET /api/debug` → `tools.ffmpeg.available === false`), e i brani in libreria sono **CBR 320 kbps**, quindi l'euristica "dimensione del frame ∝ energia" produrrebbe una linea piatta. Serve un decoder vero: si usa **`mpg123-decoder`**, la build WebAssembly di mpg123 (nessuna dipendenza nativa, gira su Node 20+).
+
+Tre scelte, ognuna verificata su un MP3 reale di produzione:
+
+- **Decode a chunk**: i frame MPEG vengono passati a `decodeFrames()` a gruppi di 64, così il PCM non viene mai materializzato per intero. Picco di memoria **60 MB** invece di 172 MB (importante su hosting condiviso). Un brano da 171 s decodifica in ~400 ms.
+- **RMS, non max**: il valore massimo per bucket su un master moderno compresso è a pieno scala ovunque, e la waveform risulterebbe piatta. L'RMS riflette l'energia media del bucket.
+- **Normalizzazione adattiva**: la finestra in dB non è fissa (-60..0 dB schiaccia i brani loud in cima al 100%) ma calcolata sul brano stesso, dal 5° al 95° percentile.
+
+**Perché un file e non una colonna nel DB**: Stellar non ha terminale e `prisma migrate deploy` su quell'hosting è inaffidabile (stesso problema del client WASM di Prisma 7). Una migrazione non applicata che aggiunge una colonna a `tracks` farebbe fallire **tutte** le query sui brani, portando giù l'app intera. Il path del file si deriva dal `trackId`, quindi non serve nessuna colonna.
 
 ## Hardening di Fase 8
 
@@ -183,6 +216,38 @@ Miglioramenti di sicurezza/robustezza applicati durante l'implementazione della 
 - **Validazione email robusta** (`src/routes/auth.routes.js`): regex + cap di lunghezza (254 char, RFC 5321) invece del semplice `includes("@")` originale.
 - **Cap lunghezza password e displayName** (anti-abuse): password 8–128 char, displayName ≤ 64 char.
 - **Defensive path check nello scanner** (`scripts/scan.js`): evita symlink loop, scarta file fuori da `MUSIC_DIR`, validazione magic bytes JPEG sulle cover (max 5 MB).
+
+## Range request sullo stream audio
+
+`GET /api/tracks/:id/stream` usa **`res.sendFile()`**, non `fs.createReadStream().pipe(res)`.
+
+La differenza è cruciale: `sendFile` (wrapper di `send`) gestisce nativamente le Range request, e `createReadStream` **no**. La vecchia implementazione dichiarava `Accept-Ranges: bytes` ma **ignorava** l'header `Range`: ogni seek del player riscaricava l'intero MP3.
+
+Misurato su un brano da 14,5 MB:
+
+| Implementazione | `Range: bytes=100-199` | Byte ricevuti |
+|---|---|---|
+| `createReadStream().pipe(res)` | `200 OK`, nessun `Content-Range` | **14.500.000** (file intero) |
+| `res.sendFile()` | `206 Partial Content`, `Content-Range: bytes 100-199/14524451` | **100** |
+
+`sendFile` inoltre imposta `ETag`/`Last-Modified` e **chiude lo stream quando il client abortisce** la connessione: il browser lo fa a ogni seek, e senza quella gestione il server continuava a leggere il file da disco scrivendo in un socket morto.
+
+C'è un test di regressione nello smoke test (`Range: bytes=0-99` → deve dare `206` + `Content-Range` + 100 byte).
+
+## Diagnostica dell'ambiente host
+
+`GET /api/debug` espone anche `tools`, con la disponibilità degli strumenti di sistema calcolata **al boot** (non per richiesta: la sonda lancia dei processi):
+
+```json
+"tools": {
+  "ffmpeg":  { "available": false, "reason": "non installato" },
+  "ffprobe": { "available": false, "reason": "non installato" }
+}
+```
+
+Serve a capire cosa si può usare su quel server. La stessa sonda è anche in `.cpanel.yml` (`[deploy] ffmpeg: ...`), quindi l'informazione compare anche nel log del deploy.
+
+> **Attenzione**: `/api/debug` è **pubblico** (nessun auth) e restituisce anche `DB_HOST`, `DB_USER`, `DB_NAME`, `DB_PORT` e la **lunghezza** del JWT secret. Il valore del secret non viene esposto, quindi il rischio è basso, ma è information disclosure inutile su un dominio pubblico. Da proteggere (token / allowlist IP / rimozione in produzione). Vedi il backlog hardening **H1** nel piano.
 - **Smoke test E2E** (`scripts/smoke-test.mjs`): 25 verifiche automatizzate sugli endpoint principali. Da usare prima di ogni deploy in prod:
 
   ```bash

@@ -29,21 +29,19 @@ function decodePeaks(base64: string): number[] {
 }
 
 export function useTrackWaveform(trackId: number | null): number[] | null {
-  const [peaks, setPeaks] = useState<number[] | null>(
-    trackId !== null ? (cache.get(trackId) ?? null) : null,
-  );
+  const [fetched, setFetched] = useState<{
+    id: number;
+    peaks: number[];
+  } | null>(null);
+
+  // La cache viene letta durante il render: i picchi già scaricati sono
+  // disponibili subito, senza dover aspettare un effetto.
+  const cached = trackId !== null ? cache.get(trackId) : undefined;
+  const peaks =
+    cached ?? (fetched && fetched.id === trackId ? fetched.peaks : null);
 
   useEffect(() => {
-    if (trackId === null) {
-      setPeaks(null);
-      return;
-    }
-
-    const cached = cache.get(trackId);
-    if (cached) {
-      setPeaks(cached);
-      return;
-    }
+    if (trackId === null || cache.has(trackId)) return;
 
     let cancelled = false;
     api
@@ -52,11 +50,10 @@ export function useTrackWaveform(trackId: number | null): number[] | null {
         const values = decodePeaks(data.waveform);
         if (values.length === 0) return;
         cache.set(trackId, values);
-        if (!cancelled) setPeaks(values);
+        if (!cancelled) setFetched({ id: trackId, peaks: values });
       })
       .catch(() => {
         // Brano senza waveform: resta il fallback decorativo.
-        if (!cancelled) setPeaks(null);
       });
 
     return () => {
