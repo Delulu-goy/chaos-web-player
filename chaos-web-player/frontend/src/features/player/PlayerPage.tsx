@@ -26,12 +26,14 @@ import { usePlayerStore } from "../../store/playerStore";
 import { useNotificationsStore } from "../../store/notificationsStore";
 import { api, ApiError } from "../../lib/api";
 import { formatTime } from "../../lib/format";
+import { useTrackWaveform } from "../../hooks/useTrackWaveform";
 import { seekAudio } from "../../audio/useAudioEngine";
 import { trackCoverUrl } from "../../lib/media";
 import type { Track } from "../../types/api";
 
-// 64 barre waveform seedate per look "stabile" tra render
-function useWaveform(count = 64) {
+// Barre decorative di fallback: usate solo quando il brano non ha ancora
+// la waveform reale (non ancora calcolata lato server).
+function useFallbackBars(count = 64) {
   return useMemo(() => {
     let seed = 42;
     const rand = () => {
@@ -61,6 +63,11 @@ export default function PlayerPage() {
   const prev = usePlayerStore((s) => s.prev);
   const setMuted = usePlayerStore((s) => s.setMuted);
   const setProgress = usePlayerStore((s) => s.setProgress);
+
+  // Waveform reale del brano in riproduzione (picchi calcolati lato
+  // server). Null se il brano non è ancora stato processato: in quel caso
+  // il player mostra le barre decorative di fallback.
+  const waveformPeaks = useTrackWaveform(currentTrack?.id ?? null);
 
   // Recupera i brani al primo mount
   const [tracks, setTracks] = useState<Track[] | null>(null);
@@ -184,6 +191,7 @@ export default function PlayerPage() {
         onShare={handleShare}
         onMute={() => setMuted(!isMuted)}
         onPlay={(t) => usePlayerStore.getState().playTrack(t, tracks)}
+        peaks={waveformPeaks}
       />
     </AppShell>
   );
@@ -209,6 +217,8 @@ interface PlayerViewProps {
   onShare: () => void;
   onMute: () => void;
   onPlay: (t: Track) => void;
+  /** Picchi reali del brano (null → fallback decorativo). */
+  peaks: number[] | null;
 }
 
 function PlayerView({
@@ -227,9 +237,10 @@ function PlayerView({
   onShare,
   onMute,
   onPlay,
+  peaks,
 }: PlayerViewProps) {
   const [queueOpen, setQueueOpen] = useState(true);
-  const bars = useWaveform(64);
+  const fallbackBars = useFallbackBars(64);
 
   return (
     <>
@@ -276,7 +287,12 @@ function PlayerView({
       </div>
 
       {/* Waveform — click, drag e tastiera per il seek */}
-      <Waveform progress={progress} onSeek={onSeek} bars={bars} />
+      <Waveform
+        progress={progress}
+        onSeek={onSeek}
+        peaks={peaks}
+        fallbackBars={fallbackBars}
+      />
 
       {/* Time row */}
       <div className="mt-2 flex items-center justify-between text-sm">
