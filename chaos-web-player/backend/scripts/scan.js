@@ -34,6 +34,8 @@ import {
   timestamp,
   ensureInside,
 } from "./_shared.mjs";
+import { computeWaveform, serializeWaveform } from "./lib/waveform.mjs";
+import { waveformFileFor, waveformsDir } from "../src/lib/waveformStore.js";
 
 loadEnv();
 
@@ -336,7 +338,67 @@ async function main() {
     console.log(`[scan] rimosso ${removedCovers} cover orfane`);
   }
 
+  // ── 4. Waveform dei brani (picchi per il player) ─────────────────────
+  // Su Stellar non c'è ffmpeg: il decode usa mpg123-decoder (WASM).
+  // Ricalcola SOLO i brani senza file waveform, quindi dopo il primo giro
+  // non costa più nulla. Un errore qui non deve mai far fallire lo scan.
+  try {
+    await generateWaveforms();
+  } catch (err) {
+    console.warn(
+      `[scan] ⚠ generazione waveform fallita (scan completato comunque): ${
+        err.message ?? err
+      }`,
+    );
+  }
+
   console.log(`[scan] ✓ done ${timestamp()}`);
+}
+
+/**
+ * Calcola e salva la waveform dei brani che non ce l'hanno ancora.
+ * Chiamata dallo scan: gira solo quando il file manca, quindi il costo è
+ * una tantum per brano e non a ogni passaggio del cron.
+ */
+async function generateWaveforms() {
+  fs.mkdirSync(waveformsDir(), { recursive: true });
+
+  const tracks = await prisma.track.findMany({
+    select: { id: true, filePath: true, title: true, artist: true },
+    orderBy: { id: "asc" },
+  });
+
+  const pending = tracks.filter((t) => !fs.existsSync(waveformFileFor(t.id)));
+  if (pending.length === 0) {
+    console.log("[scan] waveform già presenti per tutti i brani");
+    return;
+  }
+
+  console.log(`[scan] ${pending.length} brano/i senza waveform, calcolo...`);
+
+  let ok = 0;
+  let failed = 0;
+  for (const track of pending) {
+    try {
+      const filePath = ensureInside(MUSIC_DIR, track.filePath);
+      if (!fs.existsSync(filePath)) {
+        throw new Error(`file non trovato: ${filePath}`);
+      }
+      const t0 = Date.now();
+      const { peaks } = await computeWaveform(filePath);
+      fs.writeFileSync(waveformFileFor(track.id), serializeWaveform(peaks), "utf8");
+      ok++;
+      console.log(
+        `[scan]   ✓ waveform ${track.title} (${Date.now() - t0} ms)`,
+      );
+    } catch (err) {
+      failed++;
+      console.warn(
+        `[scan]   ⚠ waveform fallita per ${track.title}: ${err.message ?? err}`,
+      );
+    }
+  }
+  console.log(`[scan] waveform: ${ok} calcolate, ${failed} fallite`);
 }
 
 main()

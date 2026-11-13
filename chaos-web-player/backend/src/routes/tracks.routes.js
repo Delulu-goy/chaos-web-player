@@ -3,6 +3,7 @@
 // GET /api/tracks/:id             (auth) — singolo brano
 // GET /api/tracks/:id/stream      (auth) — audio/mpeg con Accept-Ranges
 // GET /api/tracks/:id/cover       (auth) — cover image
+// GET /api/tracks/:id/waveform    (auth) — picchi del brano (base64)
 
 import { Router } from "express";
 import path from "node:path";
@@ -12,6 +13,7 @@ import prisma from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { streamRateLimit } from "../middleware/rateLimit.js";
 import { HttpError } from "../middleware/error.js";
+import { waveformFileFor } from "../lib/waveformStore.js";
 
 const router = Router();
 
@@ -116,6 +118,39 @@ router.get("/:id/cover", async (req, res, next) => {
     }
 
     res.sendFile(path.resolve(track.coverPath));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/tracks/:id/waveform — picchi del brano per il player
+//
+// Restituisce 300 byte di picchi (0-255) serializzati in base64, cioè la
+// "forma d'onda" del brano. Il file è generato dallo scan con il decoder
+// WASM mpg123 (su Stellar non c'è ffmpeg) e non cambia mai.
+//
+// 404 se il brano non ha ancora la waveform (non ancora calcolata).
+router.get("/:id/waveform", async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (Number.isNaN(id)) {
+      throw new HttpError(400, "validation", { field: "id" });
+    }
+    const track = await prisma.track.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!track) {
+      throw new HttpError(404, "not_found");
+    }
+
+    const file = waveformFileFor(id);
+    if (!fs.existsSync(file)) {
+      throw new HttpError(404, "not_found");
+    }
+
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.json({ waveform: fs.readFileSync(file, "utf8") });
   } catch (err) {
     next(err);
   }

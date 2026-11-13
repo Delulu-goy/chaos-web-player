@@ -298,6 +298,23 @@ async function run() {
     );
   }
 
+  // ── 11c. GET /api/tracks/:id/waveform → 200 con base64 (o 404) ─────
+  // I picchi della waveform sono generati dallo scan con il decoder WASM
+  // mpg123. Se il brano non è ancora stato processato il file non esiste
+  // e la risposta è un 404 legittimo: il frontend mostra il fallback.
+  if (firstTrackId) {
+    const r = await http("GET", `/api/tracks/${firstTrackId}/waveform`, { jar });
+    const wf = r.json?.waveform;
+    const isBase64 = typeof wf === "string" && /^[A-Za-z0-9+/=]+$/.test(wf);
+    record(
+      `GET /api/tracks/${firstTrackId}/waveform → 200 (base64) o 404 se non generata`,
+      r.status === 200
+        ? isBase64 && Buffer.from(wf, "base64").length > 0
+        : r.status === 404,
+      `status=${r.status}, bytes=${wf ? Buffer.from(wf, "base64").length : "n/a"}`,
+    );
+  }
+
   // ── 12. GET /api/favorites (vuoto) → 200 + array vuoto ─────────────
   {
     const r = await http("GET", "/api/favorites", { jar });

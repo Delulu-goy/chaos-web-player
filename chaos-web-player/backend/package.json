@@ -8,6 +8,7 @@
     "start": "node --experimental-strip-types src/index.js",
     "dev": "node --env-file=.env --experimental-strip-types --watch src/index.js",
     "scan": "node --env-file=.env --experimental-strip-types scripts/scan.js",
+    "waveforms": "node --env-file=.env --experimental-strip-types scripts/generate-waveforms.js",
     "seed": "node --env-file=.env --experimental-strip-types scripts/seed.js",
     "test:smoke": "node scripts/smoke-test.mjs",
     "prisma:generate": "prisma generate",
@@ -30,6 +31,7 @@
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
     "mariadb": "^3.5.4",
+    "mpg123-decoder": "^1.0.3",
     "music-metadata": "^12.0.0"
   },
   "devDependencies": {

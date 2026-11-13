@@ -11,6 +11,11 @@ node_modules/
 logs/
 *.log
 
+# Audio privato, cover e waveform generate localmente.
+# Contengono i MP3 originali (copyright) e i file derivati: non devono
+# finire nel repo.
+private/
+
 # Prisma migrations SQLite dev (se usato)
 /prisma/*.db
 /prisma/*.db-journal
