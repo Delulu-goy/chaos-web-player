@@ -29,6 +29,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePlayerStore } from "../store/playerStore";
 import { toast } from "../store/toastStore";
 import { trackCoverUrl, trackStreamUrl } from "../lib/media";
+import type { Track } from "../types/api";
 
 /**
  * Nota sullo stream audio: il cookie httpOnly viene inviato
@@ -54,6 +55,7 @@ export function useAudioEngine() {
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const isMuted = usePlayerStore((s) => s.isMuted);
   const volume = usePlayerStore((s) => s.volume);
+  const progress = usePlayerStore((s) => s.progress);
   const setPlaying = usePlayerStore((s) => s.setPlaying);
   const next = usePlayerStore((s) => s.next);
   const queue = usePlayerStore((s) => s.queue);
@@ -102,8 +104,13 @@ export function useAudioEngine() {
       return;
     }
 
+    // Solo `src`: per lo spec HTML l'assegnazione dell'attributo invoca già
+    // il media element load algorithm (azzera il readyState e aborta il
+    // caricamento precedente). Chiamare anche load() fa un SECONDO reset:
+    // aborta la resource selection appena avviata e firea un evento
+    // `pause` spurio. Sul lock screen quel pause faceva lampeggiare la
+    // notifica MediaSession.
     audio.src = trackStreamUrl(currentTrack.id);
-    audio.load();
   }, [audio, currentTrack?.id]);
 
   // ── Ripristino posizione di riproduzione ─────────────────────────────
@@ -143,26 +150,28 @@ export function useAudioEngine() {
   }, [audio, currentTrack?.id]);
 
   // ── Reconcile: desired state → elemento audio ─────────────────────────
-  // `audio.paused` rende l'effect idempotente: non chiamo play/pause se
-  // l'elemento è già nello stato desiderato.
+  // play() viene chiamato senza condizioni: su un elemento già in
+  // riproduzione è un no-op (la spec lo definisce così), quindi non serve
+  // un guard su `audio.paused`. Anzi, guardarlo sarebbe pericoloso: dopo
+  // un cambio traccia l'elemento potrebbe non essere ancora stato
+  // sincronizzato e il guard salterebbe la play(), lasciando il brano
+  // muto.
   useEffect(() => {
     if (!audio || !currentTrack) return;
 
     if (isPlaying) {
-      if (audio.paused) {
-        const gen = genRef.current;
-        audio.play().then(
-          () => {
-            // Tra la richiesta e l'avvio effettivo l'utente può aver
-            // premuto pause: in quel caso fermiamo subito. Senza questo
-            // guard, play() partirebbe comunque dopo il pause.
-            if (!usePlayerStore.getState().isPlaying) {
-              audio.pause();
-            }
-          },
-          (err) => handlePlayError(err, gen),
-        );
-      }
+      const gen = genRef.current;
+      audio.play().then(
+        () => {
+          // Tra la richiesta e l'avvio effettivo l'utente può aver
+          // premuto pause: in quel caso fermiamo subito. Senza questo
+          // guard, play() partirebbe comunque dopo il pause.
+          if (!usePlayerStore.getState().isPlaying) {
+            audio.pause();
+          }
+        },
+        (err) => handlePlayError(err, gen),
+      );
     } else {
       // Chiamare pause() su un elemento già in pausa è un no-op, ma è
       // comunque l'unico modo per abortire un play() pendente.
@@ -177,56 +186,116 @@ export function useAudioEngine() {
     audio.volume = volume;
   }, [audio, isMuted, volume]);
 
-  // ── Precarica la traccia successiva ───────────────────────────────────
-  // Un <audio> separato, non agganciato al DOM, con preload="auto".
+  // ── Precarica la traccia successiva E quella precedente ───────────────
+  // Un <audio> separato per ciascuna, non agganciato al DOM, con
+  // preload="auto": il brano finisce nella cache HTTP e il cambio traccia
+  // diventa una cache hit invece di un download da zero.
+  //
+  // Precaricare anche il PRECEDENTE conta: sul lock screen lo skip
+  // indietro era il caso peggiore (14,5 MB da scaricare, con la
+  // MediaSession che intanto viene staccata e fa sparire i controlli).
   useEffect(() => {
-    const nextTrack = queue[queueIndex + 1];
-    if (!nextTrack) return;
+    const toPreload = [
+      queue[queueIndex + 1],
+      queue[queueIndex - 1],
+    ].filter((t): t is Track => Boolean(t));
 
-    const preloader = new Audio();
-    preloader.preload = "auto";
-    preloader.src = trackStreamUrl(nextTrack.id);
+    if (toPreload.length === 0) return;
+
+    const preloaders = toPreload.map((track) => {
+      const preloader = new Audio();
+      preloader.preload = "auto";
+      preloader.src = trackStreamUrl(track.id);
+      return preloader;
+    });
 
     return () => {
-      // Cleanup: aborta il download in corso quando la coda cambia.
-      preloader.removeAttribute("src");
-      preloader.load();
+      // Cleanup: aborta i download in corso quando la coda cambia.
+      for (const preloader of preloaders) {
+        preloader.removeAttribute("src");
+        preloader.load();
+      }
     };
   }, [queue, queueIndex]);
 
   // ── Media Session API (controlli lock screen / notification) ───────────
   useEffect(() => {
     if (!currentTrack) return;
+    if (!("mediaSession" in navigator)) return;
 
-    if ("mediaSession" in navigator) {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: currentTrack.title,
-        artist: currentTrack.artist,
-        album: "Chaos Radio",
-        ...(currentTrack.coverPath
-          ? { artwork: [{ src: trackCoverUrl(currentTrack.id), sizes: "512x512", type: "image/jpeg" }] }
-          : {}),
-      });
+    // setActionHandler lancia NotSupportedError per le azioni che il
+    // browser non implementa (Safari non supporta "seekto"). Senza il
+    // try/catch l'eccezione aborta l'intero effect: i handler registrati
+    // dopo quello non supportato non verrebbero mai installati.
+    const setHandler = (
+      action: MediaSessionAction,
+      handler: MediaSessionActionHandler,
+    ) => {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+      } catch {
+        // Azione non supportata da questo browser: si prosegue.
+      }
+    };
 
-      navigator.mediaSession.setActionHandler("play", () => setPlaying(true));
-      navigator.mediaSession.setActionHandler("pause", () => setPlaying(false));
-      navigator.mediaSession.setActionHandler("nexttrack", () => next());
-      navigator.mediaSession.setActionHandler("previoustrack", () => {
-        usePlayerStore.getState().prev();
-      });
-      navigator.mediaSession.setActionHandler("seekforward", () => {
-        seekBy(10);
-      });
-      navigator.mediaSession.setActionHandler("seekbackward", () => {
-        seekBy(-10);
-      });
-      navigator.mediaSession.setActionHandler("seekto", (details) => {
-        if (typeof details.seekTime === "number") {
-          seekToTime(details.seekTime);
-        }
-      });
-    }
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: currentTrack.title,
+      artist: currentTrack.artist,
+      album: "Chaos Radio",
+      ...(currentTrack.coverPath
+        ? { artwork: [{ src: trackCoverUrl(currentTrack.id), sizes: "512x512", type: "image/jpeg" }] }
+        : {}),
+    });
+
+    setHandler("play", () => setPlaying(true));
+    setHandler("pause", () => setPlaying(false));
+    setHandler("nexttrack", () => next());
+    setHandler("previoustrack", () => {
+      usePlayerStore.getState().prev();
+    });
+    setHandler("seekforward", () => {
+      seekBy(10);
+    });
+    setHandler("seekbackward", () => {
+      seekBy(-10);
+    });
+    setHandler("seekto", (details) => {
+      if (typeof details.seekTime === "number") {
+        seekToTime(details.seekTime);
+      }
+    });
   }, [currentTrack?.id]);
+
+  // ── Media Session: stato di riproduzione ───────────────────────────────
+  // Senza playbackState esplicito il browser deduce lo stato dall'elemento
+  // audio. Durante un cambio traccia l'elemento è momentaneamente senza
+  // risorsa: il UA può staccare la MediaSession e rimuovere la notifica
+  // del lock screen, e i controlli spariscono fino a quando il brano non
+  // riparte. Dichiarare lo stato tiene la sessione viva.
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return;
+    navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+  }, [isPlaying]);
+
+  // ── Media Session: posizione nella timeline ───────────────────────────
+  // Con positionState il browser sa quanto è lungo il brano e a che punto
+  // siamo: il widget del lock screen mostra lo scrubber corretto.
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return;
+    const duration = currentTrack?.durationSeconds ?? 0;
+    if (!Number.isFinite(duration) || duration <= 0) return;
+
+    const position = Math.min(duration, Math.max(0, progress * duration));
+    try {
+      navigator.mediaSession.setPositionState({
+        duration,
+        playbackRate: 1,
+        position,
+      });
+    } catch {
+      // positionState non supportato, o valori non validi: si prosegue.
+    }
+  }, [progress, currentTrack?.durationSeconds, currentTrack?.id]);
 }
 
 /**
