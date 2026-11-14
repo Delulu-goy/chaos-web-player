@@ -128,7 +128,7 @@ Il deploy è completamente Git-based. Vedi **[`deploy/DEPLOY.md`](./deploy/DEPLO
 
 In sintesi:
 1. cPanel → MySQL® Databases → crea `chaos_radio` + user `chaos_app` (auth plugin `mysql_native_password`, grant `ALL ON *.*`)
-2. cPanel → Git Version Control → clone del repo in `/home/tuouser/radio.chaosroom.online/chaos-web-player/`
+2. cPanel → Git Version Control → clone del repo nella root del documento `/home/tuouser/radio.chaosroom.online/` (il repo contiene `.cpanel.yml` + `chaos-web-player/`; **niente sottocartella `repo/`**)
 3. cPanel → Setup Node.js App → Node 22 → Application root: `chaos-web-player/backend` → startup: `src/index.js`
 4. Setup Environment Variables (8 vars nel pannello, vedi sotto)
 5. Setup Node.js App → Run NPM Install (`.cpanel.yml` esegue automaticamente + `touch tmp/restart.txt` per restart Passenger)
@@ -187,6 +187,8 @@ Queste sono state tutte risolte e documentate per evitare di rifare gli stessi e
 10. **Le migrazioni su Stellar non sono affidabili**: `prisma migrate deploy` usa lo stesso motore del client WASM di Prisma 7, che su quell'hosting non si scarica. Per questo la waveform è un **file** in `private/` e non una colonna: una colonna mancante farebbe fallire tutte le query su `tracks` e porterebbe giù l'app. Prima di aggiungere una colonna, pensare a cosa succede se la migration non viene applicata.
 
 11. **`private/` non era gitignorato**: i MP3 originali e i file derivati (cover, waveform) avrebbero potuto finire nel repo. Ora è in `backend/.gitignore`.
+
+12. **Due copie del backend (frontend nuovo, backend vecchio)**: `SOURCE_ROOT` in `.cpanel.yml` puntava a `$DEPLOY_ROOT/repo/chaos-web-player`, ma l'application root del Node.js App è `$DEPLOY_ROOT/chaos-web-player/backend`: la pipeline aggiornava una copia, il server ne eseguiva un'altra. Risultato: le correzioni del backend (es. il 403 sui preferiti dei brani Pirate Day) non arrivavano mai in produzione, mentre la UI sembrava aggiornata. **Regola operativa**: `SOURCE_ROOT` deve coincidere con il parent dell'application root (`$DEPLOY_ROOT/chaos-web-player`, senza `/repo`); dopo ogni deploy controllare `curl -s https://radio.chaosroom.online/api/debug` → `cwd` e `git.sha` (il SHA del commit in esecuzione).
 
 ## Script utili
 

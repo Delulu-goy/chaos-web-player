@@ -556,6 +556,30 @@ async function run() {
       );
     }
 
+    // I brani del pirate day portano `favoriteable: false`: è il flag con
+    // cui il frontend decide di NON mostrare il cuore dei preferiti.
+    if (pdIds.size === 0) {
+      skip("items pirate day → favoriteable=false", "nessuna edizione attiva");
+    } else {
+      const notFlagged = pdItems.filter((t) => t.favoriteable !== false);
+      record(
+        "items pirate day → favoriteable=false",
+        notFlagged.length === 0,
+        `senza flag=${notFlagged.length}/${pdItems.length}`,
+      );
+    }
+
+    // I brani della show list sono invece preferitabili: il cuore c'è.
+    {
+      const slItems = Array.isArray(sl.json?.items) ? sl.json.items : [];
+      const flagged = slItems.filter((t) => t.favoriteable === false);
+      record(
+        "show list → favoriteable≠false",
+        flagged.length === 0,
+        `flag errati=${flagged.length}/${slItems.length}`,
+      );
+    }
+
     // POST /api/favorites/<track pirate day> → 403
     if (pdIds.size === 0) {
       skip("POST /api/favorites/<track pirate day> → 403", "nessuna edizione attiva");

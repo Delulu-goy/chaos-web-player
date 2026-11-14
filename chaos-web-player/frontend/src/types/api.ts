@@ -24,6 +24,16 @@ export interface Track {
   durationSeconds: number | null;
   coverPath: string | null;
   addedAt: string;
+  /**
+   * False se il brano NON è preferitabile (brani del Pirate Day,
+   * invariante I3). Il backend lo calcola con lo stesso predicato del
+   * guard 403 di POST /api/favorites: la UI non può quindi mostrare un
+   * cuore che il server rifiuterebbe.
+   *
+   * `undefined` = preferitabile (payload di un backend non aggiornato:
+   * in quel caso valgono le regole contestuali, es. la lista Pirate Day).
+   */
+  favoriteable?: boolean;
 }
 
 export interface ShowListResponse {

@@ -165,7 +165,26 @@ export const usePlayerStore = create<PlayerState>()(
       name: PLAYER_STORAGE_KEY,
       // Se in futuro la forma dello stato persistito cambia, bumpare la
       // versione: Zustand scarta lo stato salvato invece di corromperlo.
-      version: 1,
+      //
+      // v2: la v1 non aveva `queueSource`. Uno stato salvato da quella
+      // versione (coda = edizione Pirate Day) veniva riletto come
+      // "show-list" → il player mostrava il cuore dei preferiti su brani
+      // NON preferitabili (invariante I3). La migrazione scarta la coda:
+      // l'utente riparte dalla show list, senza cuori fuori posto.
+      version: 2,
+      migrate: (persisted) => {
+        const state = (persisted ?? {}) as Partial<PlayerState>;
+        return {
+          queue: [],
+          queueIndex: -1,
+          currentTrack: null,
+          queueSource: "show-list" as const,
+          progress: typeof state.progress === "number" ? state.progress : 0,
+          isMuted: state.isMuted ?? false,
+          volume: state.volume ?? 1,
+          isPlaying: false,
+        };
+      },
       storage: playerStorage,
       partialize: (state) => ({
         queue: state.queue,

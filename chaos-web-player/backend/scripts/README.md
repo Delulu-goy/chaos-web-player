@@ -193,7 +193,7 @@ cleanup (i suoi file sono quelli dell'edizione in arrivo).
 **Cron** (cPanel): il giorno/ora NON sta nel cron, sta nel manifest.
 
 ```
-0 * * * * cd /home/USER/radio.chaosroom.online/repo/chaos-web-player/backend && /usr/bin/node --env-file=.env --experimental-strip-types scripts/pirate-day.js >> logs/pirate-day.log 2>&1
+0 * * * * cd /home/USER/radio.chaosroom.online/chaos-web-player/backend && /usr/bin/node --env-file=.env --experimental-strip-types scripts/pirate-day.js >> logs/pirate-day.log 2>&1
 ```
 
 Da evitare `0 0 */7 * *`: il giorno del mese si azzera a ogni mese → intervalli

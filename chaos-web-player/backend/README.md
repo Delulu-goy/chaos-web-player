@@ -178,7 +178,7 @@ L'admin carica MP3 via FTP/SFTP in `backend/private/audio/`. Lo script `npm run 
 In produzione Stellar, scheduleremo il job con **cPanel Cron Jobs**:
 
 ```
-*/5 * * * * cd /home/USER/radio.chaosroom.online/repo/chaos-web-player/backend && /usr/bin/node --experimental-strip-types scripts/scan.js >> logs/scan.log 2>&1
+*/5 * * * * cd /home/USER/radio.chaosroom.online/chaos-web-player/backend && /usr/bin/node --experimental-strip-types scripts/scan.js >> logs/scan.log 2>&1
 ```
 
 > Sostituisci `USER` col tuo username cPanel. La cartella `logs/` viene creata automaticamente da `.cpanel.yml` ad ogni deploy.

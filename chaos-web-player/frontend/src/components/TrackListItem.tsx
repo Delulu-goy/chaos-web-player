@@ -31,6 +31,10 @@ interface TrackListItemProps {
    * Se false, il cuore dei preferiti non viene renderizzato.
    * Default true. La tab Pirate Day passa false: i brani del pirate day
    * non sono preferitabili (invariante I3).
+   *
+   * Nota: è un override per LISTA (nasconde il cuore a tutto ciò che è
+   * nella lista). Per nasconderlo in base al BRANO c'è il flag
+   * `track.favoriteable` del server: si applica comunque e in più.
    */
   showFavorite?: boolean;
 }
@@ -52,6 +56,10 @@ export default function TrackListItem({
   );
 
   const active = highlightPlaying && isCurrentPlaying;
+
+  // Il cuore compare solo se: la lista lo permette E il brano è
+  // preferitabile (flag del server: brani Pirate Day → no cuore).
+  const heartVisible = showFavorite && track.favoriteable !== false;
 
   return (
     <div
@@ -95,8 +103,9 @@ export default function TrackListItem({
         )}
       </div>
 
-      {/* Favorite button — z-10 per restare sopra l'overlay */}
-      {showFavorite ? (
+      {/* Favorite button — z-10 per restare sopra l'overlay.
+          Non renderizzato per i brani non preferitabili (Pirate Day). */}
+      {heartVisible ? (
         <span className="relative z-10">
           <FavoriteButton track={track} />
         </span>

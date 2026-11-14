@@ -1,7 +1,7 @@
 # Chaos Radio — Deploy su Namecheap Stellar
 
 **Data preparazione**: 2026-10-07
-**Ultimo aggiornamento**: 2026-11-13 (Fase 10 — Pirate Day: cartella, manifest, cron)
+**Ultimo aggiornamento**: 2026-11-14 (path del deploy: `SOURCE_ROOT` senza `/repo` — il backend deployato è quello che gira)
 **Versione**: MVP completo (Fasi 0-5 completate; Fase 2 saltata, da implementare)
 **Target**: subdomain `radio.chaosroom.online`
 
@@ -39,16 +39,28 @@ https://radio.chaosroom.online/
 
 Sul server Stellar la struttura è:
 ```
-/home/tuouser/radio.chaosroom.online/
-├── .htaccess                          ← config Apache
-├── chaos-web-player/                  ← repo clonato
-│   ├── backend/                       ← Node.js + Express
-│   ├── frontend/                      ← sorgenti Vite
-│   └── .cpanel.yml                    ← script auto-deploy
+/home/tuouser/radio.chaosroom.online/     ← ROOT DEL CLONE GIT (= doc root)
+/├── .htaccess                          ← config Apache
+├── .cpanel.yml                        ← pipeline di deploy
+├── chaos-web-player/                  ← il pacchetto del repo
+│   ├── backend/                       ← APPLICATION ROOT del Node.js App
+│   │   └── private/audio/             ← MP3 e cover (privato)
+│   └── frontend/                      ← sorgenti Vite
 ├── frontend/dist/                     ← build Vite (generata da .cpanel.yml)
-├── backend/private/                   ← MP3 e cover (privato)
 └── tmp/                               ← restart.txt per Passenger
 ```
+
+> ⚠️ **Il clone git è la root del documento, NON una sottocartella `repo/`.**
+> `SOURCE_ROOT` in `.cpanel.yml` è `$DEPLOY_ROOT/chaos-web-player`: è
+> esattamente il ramo che contiene l'`application root` del Node.js App
+> (`chaos-web-player/backend`). Se `SOURCE_ROOT` punta a una copia diversa,
+> la pipeline aggiorna il frontend ma **non** il backend che gira: in
+> produzione restano due versioni del codice (frontend nuovo, backend
+> vecchio) e i fix del backend non arrivano mai.
+>
+> Come verificare quale codice sta girando:
+> `curl -s https://radio.chaosroom.online/api/debug` → il campo `cwd` deve
+> essere `/home/<user>/radio.chaosroom.online/chaos-web-player/backend`.
 
 ---
 
@@ -125,18 +137,31 @@ git push -u origin main
 
 ## STEP 5 — Clona il repo in cPanel (Git Version Control)
 
-> ⚠️ **Se il path `/home/tuouser/radio.chaosroom.online` contiene già file** (default index.html di Namecheap, .well-known, cgi-bin), usa il **path alternativo** `/home/tuouser/radio.chaosroom.online/repo`. Il `.cpanel.yml` è già configurato per questa struttura.
+> ℹ️ **Il clone va nella root del documento** (`/home/tuouser/radio.chaosroom.online`),
+> così il repo contiene `.cpanel.yml` + `chaos-web-player/` e l'`application root`
+> (`chaos-web-player/backend`) coincide con il codice che la pipeline aggiorna.
+> I file preesistenti del doc root (`.htaccess`, `frontend/`, `tmp/`) non
+> vengono toccati dal clone: per questo `.htaccess` va creato DOPO il clone
+> (e non è committato).
 
 1. cPanel → **Files** → **Git Version Control**
 2. Click **Create**
 3. Compila:
    - **Clone URL**: `https://github.com/TUO-USERNAME/chaos-radio.git`
-   - **Repository path**: `/home/tuouser/radio.chaosroom.online/repo` ← **con `/repo` finale**
+   - **Repository path**: `/home/tuouser/radio.chaosroom.online` ← **la root del documento, senza `/repo`**
    - **Branch**: `master`
    - **Deployment**: lascia vuoto (usa il .cpanel.yml del repo)
 4. Click **Create**
 5. Aspetta che il clone finisca (30-60 secondi)
-6. Verifica in File Manager: `/home/tuouser/radio.chaosroom.online/repo/chaos-web-player/` deve esistere
+6. Verifica in File Manager: `/home/tuouser/radio.chaosroom.online/chaos-web-player/backend/` deve esistere
+
+> ⚠️ Se il clone non entra nella root (file preesistenti), il path alternativo
+> `/home/tuouser/radio.chaosroom.online/repo` va usato **insieme** a
+> `SOURCE_ROOT=$DEPLOY_ROOT/repo/chaos-web-player` in `.cpanel.yml`, e
+> l'application root del Node.js App deve puntare a
+> `radio.chaosroom.online/repo/chaos-web-player/backend`. Le due copie
+> (root e `repo/`) non possono coesistere: il backend che gira deve essere
+> quello che la pipeline aggiorna.
 
 ## STEP 6 — Trigger primo deploy (esegue .cpanel.yml)
 
@@ -153,7 +178,7 @@ Tempo: 2-5 minuti. Controlla i log nel pannello per errori.
 
 ## STEP 7 — Crea `backend/.env` con credenziali produzione
 
-cPanel → **File Manager** → `/home/tuouser/radio.chaosroom.online/repo/chaos-web-player/backend/`
+cPanel → **File Manager** → `/home/tuouser/radio.chaosroom.online/chaos-web-player/backend/`
 
 (Sostituisci `tuouser` col tuo username reale, es. `chaouaza`)
 
@@ -183,7 +208,7 @@ NODE_ENV=production
 1. cPanel → **Databases** → **phpMyAdmin**
 2. Click sulla tabella `chaouaza_chaos_radio` (o `chaos_radio` se non hai prefisso) nella sidebar sinistra
 3. Click tab **Import** in alto
-4. Click **Choose File** → naviga a `/home/chaouaza/radio.chaosroom.online/repo/chaos-web-player/backend/prisma/migrations/20261006105522_init/migration.sql`
+4. Click **Choose File** → naviga a `/home/chaouaza/radio.chaosroom.online/chaos-web-player/backend/prisma/migrations/20261006105522_init/migration.sql`
 5. Click **Go** in fondo alla pagina
 6. Verifica che le 7 tabelle siano presenti nella sidebar: `users`, `tracks`, `favorites`, `playlists`, `playlist_items`, `notifications`, `notification_reads`
 
@@ -195,7 +220,7 @@ NODE_ENV=production
 2. Click **Create Application**:
    - **Node.js version**: scegli **22.x** o la più recente disponibile
    - **Application mode**: Production
-   - **Application root**: `radio.chaosroom.online/repo/chaos-web-player/backend` (con `/repo` percorso)
+   - **Application root**: `radio.chaosroom.online/chaos-web-player/backend` (la copia che la pipeline aggiorna — **senza `/repo`**)
    - **Application URL**: `radio.chaosroom.online`
    - **Application startup file**: `src/index.js`
 3. Click **Create**
@@ -446,7 +471,7 @@ I nomi dei file devono corrispondere **esattamente** a quelli elencati in
 cPanel → **Cron Jobs** → nuova job (oraria, il manifest decide il giorno):
 
 ```
-0 * * * * cd /home/USER/radio.chaosroom.online/repo/chaos-web-player/backend && /usr/bin/node --env-file=.env --experimental-strip-types scripts/pirate-day.js >> logs/pirate-day.log 2>&1
+0 * * * * cd /home/USER/radio.chaosroom.online/chaos-web-player/backend && /usr/bin/node --env-file=.env --experimental-strip-types scripts/pirate-day.js >> logs/pirate-day.log 2>&1
 ```
 
 - Il giorno e l'ora **non** stanno nel cron: sta nel manifest (`publishAt`).
@@ -461,7 +486,7 @@ cPanel → **Cron Jobs** → nuova job (oraria, il manifest decide il giorno):
 C'è anche da configurare (una tantum) il cron dello scanner:
 
 ```
-*/5 * * * * cd /home/USER/radio.chaosroom.online/repo/chaos-web-player/backend && /usr/bin/node --env-file=.env --experimental-strip-types scripts/scan.js >> logs/scan.log 2>&1
+*/5 * * * * cd /home/USER/radio.chaosroom.online/chaos-web-player/backend && /usr/bin/node --env-file=.env --experimental-strip-types scripts/scan.js >> logs/scan.log 2>&1
 ```
 
 `scan.js` mantiene anche la playlist `show-list` (i brani del Pirate Day non
@@ -496,7 +521,7 @@ nessun passaggio in cPanel.
 ## Verifica rapida
 
 ```bash
-cd repo/chaos-web-player/backend
+cd chaos-web-player/backend
 npm run pirate-day          # pubblica (o pulisce) e stampa il log
 tail -50 logs/pirate-day.log
 ```
@@ -590,7 +615,22 @@ GET http://localhost:3001/api/auth/me net::ERR_FAILED
 ```bash
 curl -s https://radio.chaosroom.online/api/debug
 ```
-Restituisce `pid`, `node`, env vars. Se il `pid` cambia tra due restart, Passenger sta riavviando. Se vedi il marker `console.log` in stderr.log, il nuovo codice è caricato.
+Restituisce `pid`, `node`, env vars, `cwd` e `git` (commit SHA). Se il `pid` cambia tra due restart, Passenger sta riavviando. Se vedi il marker `console.log` in stderr.log, il nuovo codice è caricato.
+
+### 4. Il frontend è aggiornato ma il backend no (due copie del codice)
+
+**Sintomo**: dopo un deploy, la UI mostra le novità (frontend) ma il backend continua a rispondere come prima (fix del backend mai arrivati, endpoint vecchi, regole di business obsolete).
+
+**Causa**: `SOURCE_ROOT` in `.cpanel.yml` punta a una **copia diversa** rispetto a quella che esegue il Node.js App. La pipeline aggiorna (build frontend, `npm install`, `prisma generate`) la copia indicata da `SOURCE_ROOT`, ma Passenger avvia il processo dall'**application root** configurata nel pannello: se le due sono diverse, il backend che gira resta vecchio per sempre.
+
+**Fix**:
+1. `curl -s https://radio.chaosroom.online/api/debug` → il campo `cwd` dice **dove** gira il backend
+2. Deve coincidere con `$SOURCE_ROOT/backend` in `.cpanel.yml`:
+   `cwd` = `/home/<user>/radio.chaosroom.online/chaos-web-player/backend`
+   ⟹ `SOURCE_ROOT=$DEPLOY_ROOT/chaos-web-player` (senza `/repo`)
+3. Nel pannello Setup Node.js App, **Application root** = `radio.chaosroom.online/chaos-web-player/backend`
+4. Se esiste una copia obsoleta (es. `.../repo/chaos-web-player/`), eliminarla: due copie dello stesso backend sono la causa ricorrente di "il fix non c'è"
+5. Verifica col campo `git` di `/api/debug`: il SHA deve corrispondere all'ultimo commit pushato
 
 ---
 

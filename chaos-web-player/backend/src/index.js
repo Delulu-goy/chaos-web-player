@@ -15,6 +15,7 @@ import helmet from "helmet";
 
 import { errorHandler } from "./middleware/error.js";
 import { probeTools } from "./diagnostics.js";
+import { deployedCommitSha } from "./lib/deployInfo.js";
 
 import authRoutes from "./routes/auth.routes.js";
 import tracksRoutes from "./routes/tracks.routes.js";
@@ -34,12 +35,24 @@ console.log("[chaos-radio] Boot v2026-10-12-FINAL-FIX pid=" + process.pid + " no
 const tools = probeTools();
 console.log("[chaos-radio] tools: " + JSON.stringify(tools));
 
+// SHA del commit in esecuzione: calcolato una volta sola e riusato da
+// /api/debug (l'endpoint è pubblico e chiamato spesso durante i deploy:
+// non ha senso lanciare `git` a ogni richiesta).
+let gitInfoPromise = null;
+function gitInfo() {
+  gitInfoPromise ??= deployedCommitSha();
+  return gitInfoPromise;
+}
+
 // Debug endpoint: ci dice esattamente cosa sta girando
-app.get("/api/debug", (req, res) => {
+app.get("/api/debug", async (req, res) => {
   res.json({
     pid: process.pid,
     node: process.version,
     uptime: process.uptime(),
+    // Quale commit sta girando: se non coincide con l'ultimo pushato,
+    // il deploy non ha aggiornato il backend (vedi deploy/DEPLOY.md).
+    git: await gitInfo(),
     env_check: {
       DB_HOST: process.env.DB_HOST ?? "MISSING",
       DB_USER: process.env.DB_USER ?? "MISSING",
@@ -48,6 +61,7 @@ app.get("/api/debug", (req, res) => {
       JWT_SECRET: process.env.JWT_SECRET ? "set (" + process.env.JWT_SECRET.length + " chars)" : "MISSING",
       NODE_ENV: process.env.NODE_ENV ?? "MISSING",
       PORT: process.env.PORT ?? "MISSING",
+      PIRATE_DAY_DIR: process.env.PIRATE_DAY_DIR ?? "MISSING",
     },
     cwd: process.cwd(),
     tools,

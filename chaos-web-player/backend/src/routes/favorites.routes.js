@@ -7,7 +7,11 @@ import { Router } from "express";
 import prisma from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
-import { isPirateDayTrack, pirateDayTrackIds } from "../lib/pirateDay.js";
+import {
+  isFavoriteable,
+  pirateDayTrackIds,
+  toTrackDto,
+} from "../lib/pirateDay.js";
 
 const router = Router();
 
@@ -26,9 +30,15 @@ router.get("/", async (req, res, next) => {
       orderBy: { createdAt: "desc" },
     });
     const pirateDayIds = await pirateDayTrackIds();
-    // Restituiamo solo l'oggetto track (frontend si aspetta [Track])
+    // Restituiamo solo l'oggetto track (frontend si aspetta [Track]).
+    // Stesso predicato del POST: un brano non preferitabile non entra
+    // nella lista, nemmeno se il preferito è stato messo prima della
+    // regola (o a mano).
     res.json(
-      favorites.map((f) => f.track).filter((t) => !pirateDayIds.has(t.id)),
+      favorites
+        .map((f) => f.track)
+        .filter((t) => isFavoriteable(t, pirateDayIds))
+        .map((t) => toTrackDto(t, pirateDayIds)),
     );
   } catch (err) {
     next(err);
@@ -50,9 +60,12 @@ router.post("/:trackId", async (req, res, next) => {
     }
 
     // I brani del Pirate Day non si possono salvare nei preferiti.
-    // Il frontend nasconde il cuore, ma la regola va garantita qui:
-    // richiesta diretta o client PWA vecchio passerebbero.
-    if (await isPirateDayTrack(trackId)) {
+    // Il frontend nasconde il cuore (flag `favoriteable` nel DTO), ma la
+    // regola va garantita qui: richiesta diretta o client PWA vecchio
+    // passerebbero. Stesso predicato del DTO → la UI non può promettere
+    // un cuore che il server rifiuta.
+    const pirateDayIds = await pirateDayTrackIds();
+    if (!isFavoriteable(track, pirateDayIds)) {
       throw new HttpError(403, "forbidden");
     }
 

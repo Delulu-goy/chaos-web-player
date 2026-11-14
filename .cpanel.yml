@@ -4,21 +4,26 @@
 # Docs: https://docs.cpanel.net/cpanel/files/domains/manage-git-version-control/
 #
 # Layout del server Stellar:
-#   /home/tuouser/radio.chaosroom.online/
+#   /home/tuouser/radio.chaosroom.online/     ← ROOT DEL CLONE GIT (= doc root)
 #   ├── .htaccess                    ← config Apache (manuale, NON committato)
+#   ├── .cpanel.yml                  ← questo file
 #   ├── tmp/                         ← restart.txt per Passenger
-#   ├── frontend/dist/               ← build Vite (generata qui)
-#   └── repo/                        ← codice sorgente clonato
-#       └── chaos-web-player/
-#           ├── backend/
-#           └── frontend/
+#   ├── frontend/dist/               ← build Vite (generata qui, servita da Apache)
+#   └── chaos-web-player/            ← il pacchetto del repo
+#       ├── backend/                 ← APPLICATION ROOT di Passenger
+#       └── frontend/
+#
+# Attenzione: il clone git è la ROOT del documento e NON una sottocartella
+# `repo/`. L'application root del Node.js App è `chaos-web-player/backend`,
+# quindi $SOURCE_ROOT/chaos-web-player/backend coincide con il codice che
+# gira davvero: la pipeline aggiorna la copia che esegue il backend.
 
 ---
 deployment:
   tasks:
     # Setup paths (adattare tuouser al proprio username cPanel)
     - export DEPLOY_ROOT=/home/$CPANEL_USER/radio.chaosroom.online
-    - export SOURCE_ROOT=$DEPLOY_ROOT/repo/chaos-web-player
+    - export SOURCE_ROOT=$DEPLOY_ROOT/chaos-web-player
     - export FRONTEND_DEPLOY=$DEPLOY_ROOT/frontend
 
     # ── Backend ────────────────────────────────

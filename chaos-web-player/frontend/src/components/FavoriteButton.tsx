@@ -7,6 +7,13 @@
 //
 // Nota: il bottone riceve il Track completo (non solo l'id) perché lo store
 // deve poter inserire il brano nella lista dei preferiti all'ottimistica.
+//
+// I brani NON preferitabili (Pirate Day) non hanno cuore: il controllo sta
+// QUI dentro il componente, non nei caller. Così qualsiasi superficie che
+// renderizza un brano (player, playlist, preferiti, code future) è
+// automaticamente protetta: non basta dimenticare una prop per far
+// comparire un cuore che il server rifiuta (→ 403 "impossibile aggiornare
+// i preferiti").
 
 import { Heart } from "lucide-react";
 import { useState } from "react";
@@ -38,6 +45,10 @@ export default function FavoriteButton({ track, size = 20 }: FavoriteButtonProps
       setBusy(false);
     }
   };
+
+  // Brano non preferitabile (Pirate Day): nessun cuore. Il return avviene
+  // DOPO gli hook: i hook devono essere chiamati sempre, nello stesso ordine.
+  if (track.favoriteable === false) return null;
 
   return (
     <button

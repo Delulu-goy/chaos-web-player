@@ -6,7 +6,7 @@ import { Router } from "express";
 import prisma from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
-import { isPirateDayPath, pirateDayTrackIds } from "../lib/pirateDay.js";
+import { isPirateDayPath, pirateDayTrackIds, toTrackDto } from "../lib/pirateDay.js";
 
 const router = Router();
 
@@ -39,7 +39,8 @@ router.get("/show-list", async (req, res, next) => {
     const pirateDayIds = await pirateDayTrackIds();
     const items = playlist.items
       .map((i) => i.track)
-      .filter((t) => !isPirateDayPath(t.filePath) && !pirateDayIds.has(t.id));
+      .filter((t) => !isPirateDayPath(t.filePath) && !pirateDayIds.has(t.id))
+      .map((t) => toTrackDto(t, pirateDayIds));
 
     res.json({
       title: playlist.title,
@@ -75,6 +76,10 @@ router.get("/pirate-day", async (req, res, next) => {
       throw new HttpError(404, "not_found");
     }
 
+    // I brani dell'edizione non sono preferitabili (I3): il flag
+    // `favoriteable` = false dice al frontend di non mostrare il cuore.
+    const pirateDayIds = await pirateDayTrackIds();
+
     res.json({
       title: playlist.title,
       curator: {
@@ -86,7 +91,7 @@ router.get("/pirate-day", async (req, res, next) => {
       description: playlist.description,
       startsAt: playlist.startsAt,
       endsAt: playlist.endsAt,
-      items: playlist.items.map((i) => i.track),
+      items: playlist.items.map((i) => toTrackDto(i.track, pirateDayIds)),
     });
   } catch (err) {
     next(err);

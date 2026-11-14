@@ -55,6 +55,12 @@ export const useFavoritesStore = create<FavoritesState>((set, get) => ({
   isFavorite: (trackId) => get().favoriteIds.has(trackId),
 
   toggle: async (track) => {
+    // I brani non preferitabili (Pirate Day) non si possono salvare nei
+    // preferiti: niente richiesta, niente toast d'errore. Il cuore non
+    // viene neppure renderizzato (FavoriteButton torna null), ma il guard
+    // qui chiude il caso di un caller legacy che lo invoca lo stesso.
+    if (track.favoriteable === false) return false;
+
     const wasFavorite = get().favoriteIds.has(track.id);
     const next = !wasFavorite;
 

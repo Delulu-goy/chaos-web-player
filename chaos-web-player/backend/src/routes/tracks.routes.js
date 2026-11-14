@@ -14,6 +14,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { streamRateLimit } from "../middleware/rateLimit.js";
 import { HttpError } from "../middleware/error.js";
 import { waveformFileFor } from "../lib/waveformStore.js";
+import { pirateDayTrackIds, toTrackDto } from "../lib/pirateDay.js";
 
 const router = Router();
 
@@ -30,7 +31,11 @@ router.get("/", async (req, res, next) => {
     const tracks = await prisma.track.findMany({
       orderBy: { addedAt: "desc" },
     });
-    res.json(tracks);
+    // L'endpoint contiene ANCHE i brani del Pirate Day (il player li deve
+    // poter riprodurre): ognuno porta il flag `favoriteable` = false, così
+    // il frontend non mostra un cuore che il server rifiuterebbe.
+    const pirateDayIds = await pirateDayTrackIds();
+    res.json(tracks.map((t) => toTrackDto(t, pirateDayIds)));
   } catch (err) {
     next(err);
   }
