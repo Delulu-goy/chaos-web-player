@@ -50,6 +50,13 @@ function skip(name, detail = "") {
 }
 
 /**
+ * Messaggio standard per i test saltati causa rate limit su /auth/*.
+ * Non è un bug dell'API: è il budget di richieste /auth* (5 ogni 15 min
+ * per IP) esaurito dal test stesso.
+ */
+const RATE_LIMIT_HINT = "rate limit /auth/* (5 req / 15 min per IP)";
+
+/**
  * Cookie jar minimo: salva solo il cookie `token` (l'unico che ci serve).
  */
 function makeJar() {
@@ -75,7 +82,7 @@ function makeJar() {
 async function http(
   method,
   path,
-  { body, jar, omitBody = false, headers: extraHeaders, raw = false } = {},
+  { body, jar, omitBody = false, headers: extraHeaders, raw = false, timeoutMs } = {},
 ) {
   const url = `${BASE_URL}${path}`;
   const headers = { Accept: "application/json", ...extraHeaders };
@@ -88,7 +95,9 @@ async function http(
   }
 
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  // Timeout per richiesta: quello globale (10s) non basta per il download
+  // integrale di un brano (15+ MB) su un host condiviso.
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs ?? TIMEOUT_MS);
   try {
     const res = await fetch(url, {
       method,
@@ -152,11 +161,15 @@ async function run() {
     const r = await http("POST", "/api/auth/login", {
       body: { email: "no-such-user@chaosroom.local", password: "wrongpass" },
     });
-    record(
-      "POST /api/auth/login (credenziali errate) → 401",
-      r.status === 401,
-      `status=${r.status}`,
-    );
+    if (r.status === 429) {
+      skip("POST /api/auth/login (credenziali errate) → 401", RATE_LIMIT_HINT);
+    } else {
+      record(
+        "POST /api/auth/login (credenziali errate) → 401",
+        r.status === 401,
+        `status=${r.status}`,
+      );
+    }
   }
 
   // ── 3. POST /api/auth/register (utente random) ─────────────────────
@@ -168,6 +181,15 @@ async function run() {
       body: { email, password, displayName: "Smoke User" },
       jar,
     });
+    if (r.status === 429) {
+      // Il rate limiter di /auth/* (5 req / 15 min per IP) ha esaurito la
+      // quota: NON è un bug dell'API. Senza sessione non si può proseguire.
+      skip("POST /api/auth/register (utente nuovo) → 201 + cookie", RATE_LIMIT_HINT);
+      console.error("\n[smoke] ABORTITO: rate limit su /auth/*.");
+      console.error("[smoke] Alzare AUTH_RATE_LIMIT_MAX (env var del pannello) o attendere la fine della finestra di 15 minuti.");
+      process.exitCode = 1;
+      return;
+    }
     const validUser =
       r.json?.user?.email === email &&
       typeof r.json?.user?.id === "number" &&
@@ -196,11 +218,15 @@ async function run() {
     const r = await http("POST", "/api/auth/register", {
       body: { password: "abcdefgh" },
     });
-    record(
-      "POST /api/auth/register (no email) → 400",
-      r.status === 400,
-      `status=${r.status}`,
-    );
+    if (r.status === 429) {
+      skip("POST /api/auth/register (no email) → 400", RATE_LIMIT_HINT);
+    } else {
+      record(
+        "POST /api/auth/register (no email) → 400",
+        r.status === 400,
+        `status=${r.status}`,
+      );
+    }
   }
 
   // ── 6. Validazione: register con password 6 char → 400 ────────────
@@ -208,11 +234,15 @@ async function run() {
     const r = await http("POST", "/api/auth/register", {
       body: { email: `bad-${Date.now()}@chaos.test`, password: "abc" },
     });
-    record(
-      "POST /api/auth/register (password corta) → 400",
-      r.status === 400,
-      `status=${r.status}`,
-    );
+    if (r.status === 429) {
+      skip("POST /api/auth/register (password corta) → 400", RATE_LIMIT_HINT);
+    } else {
+      record(
+        "POST /api/auth/register (password corta) → 400",
+        r.status === 400,
+        `status=${r.status}`,
+      );
+    }
   }
 
   // ── 7. Validazione: register email malformata → 400 ────────────────
@@ -220,11 +250,15 @@ async function run() {
     const r = await http("POST", "/api/auth/register", {
       body: { email: "not-an-email", password: "abcdefgh" },
     });
-    record(
-      "POST /api/auth/register (email malformata) → 400",
-      r.status === 400,
-      `status=${r.status}`,
-    );
+    if (r.status === 429) {
+      skip("POST /api/auth/register (email malformata) → 400", RATE_LIMIT_HINT);
+    } else {
+      record(
+        "POST /api/auth/register (email malformata) → 400",
+        r.status === 400,
+        `status=${r.status}`,
+      );
+    }
   }
 
   // ── 8. GET /api/tracks (auth) → 200 + array ────────────────────────
@@ -318,10 +352,12 @@ async function run() {
     );
 
     // Senza Range: risposta completa 200, lunghezza = dimensione del file.
+    // Timeout alto: è un download da 15+ MB, il default (10s) lo taglia.
     const r2 = await http("GET", `/api/tracks/${firstTrackId}/stream`, {
       jar,
       raw: true,
       headers: { Accept: "*/*" },
+      timeoutMs: 90_000,
     });
     const cl2 = r2.resHeaders?.["content-length"];
     record(
@@ -501,14 +537,26 @@ async function run() {
   }
 
   // ── 25. POST /api/auth/login con le stesse credenziali → 200 ─────
+  //
+  // Se il rate limiter ha già bloccato l'IP, questo check salta: la
+  // sessione è comunque stata verificata al passo 3/4 (register + /me).
   {
+    // La cookie precedente viene conservata: se il re-login viene bloccato
+    // dal rate limiter, i check successivi (Pirate Day) devono poter
+    // comunque usare la sessione.
+    const previousCookie = jar.header();
     jar.clear();
     const r = await http("POST", "/api/auth/login", { body: { email, password }, jar });
-    record(
-      "POST /api/auth/login (ri-login) → 200 + nuovo cookie",
-      r.status === 200 && jar.has(),
-      `status=${r.status}`,
-    );
+    if (r.status === 429) {
+      if (previousCookie) jar.setFromHeader(previousCookie);
+      skip("POST /api/auth/login (ri-login) → 200 + nuovo cookie", RATE_LIMIT_HINT);
+    } else {
+      record(
+        "POST /api/auth/login (ri-login) → 200 + nuovo cookie",
+        r.status === 200 && jar.has(),
+        `status=${r.status}`,
+      );
+    }
   }
 
   // ── 26. Pirate Day: la show list non contiene i brani del pirate day,

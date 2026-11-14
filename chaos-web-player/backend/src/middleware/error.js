@@ -40,6 +40,18 @@ export function errorHandler(err, req, res, _next) {
     }
   }
 
+  // Errori 4xx che portano già con sé il loro status (body parser:
+  // JSON malformato → 400, payload troppo grande → 413; anche i 429 dei
+  // rate limiter). Rispondere 500 sarebbe bugiardo: è colpa del client,
+  // non del server, e il client ha bisogno del vero codice per capire
+  // cosa correggere.
+  const status = err.status ?? err.statusCode;
+  if (typeof status === "number" && status >= 400 && status < 500) {
+    return res.status(status).json({
+      error: status === 413 ? "payload_too_large" : "validation",
+    });
+  }
+
   // Tutto il resto: log + 500 generico
   console.error("[unhandled error]", err);
   res.status(500).json({ error: "internal" });

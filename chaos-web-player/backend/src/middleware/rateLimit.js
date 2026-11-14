@@ -6,9 +6,20 @@ import rateLimit from "express-rate-limit";
 // In development, increase limit to avoid blocking manual checks
 const DEV_MAX = process.env.NODE_ENV === "production" ? 5 : 100;
 
+// Limite configurabile via env var.
+//
+// Il default (5/15min per IP) è volutamente stretto: sullo stesso IP
+// (NAT, operatore mobile) più utenti condividono la quota. Ma lo smoke
+// test E2E fa 7 richieste /auth/* (registrazione + login + casi limite)
+// e con 5 fallirebbe SEMPRE per rate limit, non per un bug.
+//
+// Per usarlo in produzione: AUTH_RATE_LIMIT_MAX=20 nel pannello env vars
+// (oppure attendere la fine della finestra di 15 minuti).
+const AUTH_MAX = parseInt(process.env.AUTH_RATE_LIMIT_MAX ?? "", 10) || DEV_MAX;
+
 export const authRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minuti
-  max: DEV_MAX,
+  max: AUTH_MAX,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
