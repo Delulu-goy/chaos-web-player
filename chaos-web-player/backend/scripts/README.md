@@ -263,24 +263,33 @@ Genera (o rigenera) `private/audio/pirate-day/manifest.json` a partire da:
 
 **Uso su Stellar (cPanel "Run JS Script")**
 
-Su Stellar non c'è SSH, ma il pulsante **Run JS Script** della card
-"Setup Node.js App" avvia un file JS dell'application root. Il percorso da
-inserire è:
+> ⚠️ **Su Stellar NON usare "Run NPM Script"**: quel runner avvia node con
+> limiti LVE più stretti e Node non riesce ad allocare la WebAssembly del
+> type-stripping → `RangeError: WebAssembly.Instance(): Out of memory`.
+> Lo stesso script lanciato da SSH o da cron **funziona** (verificato in
+> produzione). Per il "Run JS Script" di cPanel: funziona solo con l'app
+> Express fermata, e conviene comunque preferire SSH.
+
+**Accesso SSH (Stellar)**
 
 ```
-scripts/pirate-day-init.js
+ssh -i ~/.ssh/id_ed25519 -p 21098 chaouaza@198.177.120.31
 ```
 
-Lo script è progettato per quel contesto:
+La porta **21098** è quella assegnata all'account (cPanel → SSH Access →
+Access Details). Con la shell attiva si possono lanciare gli script a mano:
 
-- fa il **chdir sull'application root** (così `.env` e le cartelle relative
-  si risolvono sempre, da qualunque directory parta il processo);
-- **si rilancia da solo** con `--experimental-strip-types` se il Node in uso
-  non sa importare i file `.ts` (il client Prisma) — su Node ≥ 22.18 non
-  serve, il type stripping è attivo di default;
-- scrive il manifest in UTF-8 **senza BOM** e logga tutto su stdout.
+```bash
+cd /home/chaouaza/radio.chaosroom.online/chaos-web-player/backend
+/home/chaouaza/nodevenv/radio.chaosroom.online/chaos-web-player/backend/22/bin/node \
+  --env-file=.env --experimental-strip-types scripts/pirate-day-init.js
+```
 
-Flusso settimanale consigliato:
+Il percorso di `node` è quello del **virtualenv** (cPanel → Setup Node.js
+App → *Virtual environment*): il cron non ha la PATH dell'utente, quindi il
+path deve essere assoluto.
+
+**Flusso settimanale consigliato**:
 
 1. carichi i nuovi MP3 in `private/audio/pirate-day/`;
 2. **Run JS Script** → `scripts/pirate-day-init.js` → il manifest viene

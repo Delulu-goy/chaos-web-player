@@ -369,14 +369,33 @@ scrivi a mano, il formato è:
 `links` è un **oggetto** `{spotify: url}`: è il formato che il frontend si
 aspetta (un array farebbe crashare `CuratorCard`).
 
-## STEP 1b — Generare il manifest dal pannello (consigliato)
+## STEP 1b — Generare il manifest (SSH o "Run JS Script")
 
-Su Stellar non c'è SSH, ma la card **Setup Node.js App** ha il pulsante
-**Run JS Script** (avvia un file JS dell'application root):
+> ⚠️ **Su Stellar non usare "Run NPM Script"**: quel runner avvia node con
+> limiti LVE più stretti e Node non riesce ad allocare la WebAssembly del
+> type-stripping → `RangeError: WebAssembly.Instance(): Out of memory`.
+> Da **SSH** e da **cron** lo stesso script funziona (verificato in
+> produzione il 14/11/2026).
 
-1. carica i MP3 dell'edizione in `private/audio/pirate-day/`;
-2. **Setup Node.js App** → la tua app → **Run JS Script**;
-3. path: `scripts/pirate-day-init.js` → **Run**.
+**Accesso SSH** (cPanel → SSH Access → Access Details):
+
+```
+Server IP: 198.177.120.31
+Username:   chaouaza
+SSH port:   21098
+```
+
+```bash
+ssh -i ~/.ssh/id_ed25519 -p 21098 chaouaza@198.177.120.31
+cd /home/chaouaza/radio.chaosroom.online/chaos-web-player/backend
+/home/chaouaza/nodevenv/radio.chaosroom.online/chaos-web-player/backend/22/bin/node \
+  --env-file=.env --experimental-strip-types scripts/pirate-day-init.js
+```
+
+Su cPanel, in alternativa, il pulsante **Run JS Script** della card "Setup
+Node.js App" avvia un file JS dell'application root (path:
+`scripts/pirate-day-init.js`) — ma funziona solo con l'app Express **ferma**,
+perché con l'app attiva Node non trova spazio per la WebAssembly.
 
 Lo script genera il manifest con:
 
@@ -394,8 +413,7 @@ e cambia **solo il curatore**. Il manifest precedente viene archiviato in
 
 Se il manifest descrive un'edizione **non ancora pubblicata**, lo script non
 lo sovrascrive (protegge la programmazione): per farlo comunque serve
-`--force`, che da "Run JS Script" non si passa — in quel caso si usa il
-cron con il comando completo (vedi STEP 3).
+`--force`, che si passa solo da SSH/cron.
 
 **Env var utili** (da impostare in cPanel → Setup Node.js App → Environment
 variables, oppure in `backend/.env`):
