@@ -1,19 +1,35 @@
 #!/bin/bash
-# Chaos Radio — post-deploy script (eseguire UNA volta dopo l'upload)
-# Crea le cartelle private se non esistono, applica le migration.
+# Chaos Radio — post-deploy script (script di BOOTSTRAP, una tantum)
+#
+# NON è il deploy: il deploy è la pipeline cPanel (`.cpanel.yml`) o il
+# workflow GitHub Actions. Questo script serve solo alla PRIMA
+# installazione (o a un bootstrap manuale via SSH) per preparare le
+# cartelle private, i permessi e le dipendenze.
+#
+# Uso:
+#   bash deploy/post-deploy.sh /home/<user>/radio.chaosroom.online/chaos-web-player/backend
+#
+# Note:
+# - `prisma generate` e `prisma migrate deploy` NON funzionano su Stellar
+#   (binari WASM non scaricabili): il client Prisma è committato in
+#   `generated/prisma/` e le migration si applicano da phpMyAdmin. Qui
+#   falliscono senza bloccare il resto.
 
 set -e
 
 APP_ROOT="${1:-$(pwd)}"
-echo "[chaos-deploy] using app root: $APP_ROOT"
+echo "[chaos-deploy] application root: $APP_ROOT"
 
-# 1. Cartelle private
+# 1. Cartelle private (MP3, cover, waveform, log)
 mkdir -p "$APP_ROOT/private/audio"
 mkdir -p "$APP_ROOT/private/covers"
+mkdir -p "$APP_ROOT/private/waveforms"
+mkdir -p "$APP_ROOT/logs"
+mkdir -p "$APP_ROOT/tmp"
 chmod 755 "$APP_ROOT/private"
 echo "✓ private/ directories created"
 
-# 2. Verifica .env
+# 2. Verifica .env (usato da script CLI e cron: l'app usa il pannello)
 if [ ! -f "$APP_ROOT/.env" ]; then
   echo "✗ .env not found. Create it from .env.example before running this script."
   exit 1
@@ -27,22 +43,24 @@ if [ ! -d "$APP_ROOT/node_modules" ]; then
 fi
 echo "✓ node_modules present"
 
-# 4. Prisma generate (idempotente)
-echo "→ running prisma generate..."
-npx prisma generate
+# 4. Prisma generate (su Stellar fallisce: si usa il client committato)
+echo "→ running prisma generate (può fallire su Stellar: ok)..."
+npx prisma generate || echo "⚠ prisma generate non eseguibile: si usa il client committato in generated/prisma/"
 
-# 5. Migration
-echo "→ running prisma migrate deploy..."
-npx prisma migrate deploy
+# 5. Migration (su Stellar fallisce: si applica da phpMyAdmin)
+echo "→ running prisma migrate deploy (può fallire su Stellar: ok)..."
+npx prisma migrate deploy || echo "⚠ prisma migrate deploy non eseguibile: applica la migration da phpMyAdmin"
 
-# 6. (Opzionale) Seed se script esiste
+# 6. Seed (opzionale): popola dati demo. NON eseguire in produzione se
+#    l'edizione Pirate Day è attiva.
 if [ -f "$APP_ROOT/scripts/seed.js" ]; then
-  echo "→ running seed..."
-  npm run seed
+  echo "→ scripts/seed.js presente: NON eseguito automaticamente (dati demo)"
+  echo "  esegui 'npm run seed' a mano solo se ti servono i dati demo"
 else
-  echo "ℹ scripts/seed.js not found (Fase 2 non ancora implementata) — skip"
+  echo "ℹ scripts/seed.js non trovato — skip"
 fi
 
 echo ""
-echo "✅ Deploy bootstrap completato."
-echo "→ Ora riavvia il Node.js App dal pannello cPanel Setup Node.js App."
+echo "✅ Bootstrap completato."
+echo "→ Ora riavvia il Node.js App dal pannello (o: touch $APP_ROOT/tmp/restart.txt)"
+echo "→ Verifica: curl -s https://radio.chaosroom.online/api/debug"

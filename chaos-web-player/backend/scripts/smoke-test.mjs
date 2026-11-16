@@ -2,7 +2,7 @@
 //
 // Verifica end-to-end del backend girando: esegue una serie di chiamate
 // HTTP realistiche e controlla che le risposte soddisfino i contratti
-// dell'API (vedi plans/chaos-radio-player.md §6).
+// dell'API (vedi backend/README.md → "Endpoint API").
 //
 // Uso:
 //   node scripts/smoke-test.mjs

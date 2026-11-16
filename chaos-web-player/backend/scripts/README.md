@@ -339,7 +339,7 @@ npm run test:smoke
 SMOKE_BASE_URL=https://radio.chaosroom.online npm run test:smoke
 ```
 
-25 test base + 4 check sul Pirate Day che coprono gli item 1, 2, 4, 6, 8 della Fase 8 e gli invarianti I1/I3 della Fase 10 del piano di implementazione:
+29 test base + 5 check sul Pirate Day che coprono gli invarianti I1/I3 del Pirate Day (i brani dell'edizione non sono preferitabili) e il contratto degli endpoint:
 
 | # | Check | Categoria |
 |---|---|---|
@@ -363,17 +363,25 @@ SMOKE_BASE_URL=https://radio.chaosroom.online npm run test:smoke
 | 25 | Re-login con stesse credenziali → 200 | Auth |
 | 26 | Pirate-day → shape `{title, curator, items[], endsAt}` | Contratto |
 | 27 | Show list ∩ track(playlist `PIRATE_DAY`) = ∅ | Contratto |
-| 28 | `POST /api/favorites/<track pirate day>` → 403 | Sicurezza |
-| 29 | `GET /api/favorites` senza track pirate day | Contratto |
+| 28 | Item pirate day → `favoriteable = false` | Contratto |
+| 29 | Item show list → `favoriteable ≠ false` | Contratto |
+| 30 | `POST /api/favorites/<track pirate day>` → 403 | Sicurezza |
+| 31 | `GET /api/favorites` senza track pirate day | Contratto |
 
-I check 26-29 sono **saltati** (non falliti) quando non c'è un'edizione
+I check 26-31 sono **saltati** (non falliti) quando non c'è un'edizione
 Pirate Day attiva: il `○` nel log indica uno skip, e il riepilogo li conta
 separatamente (`N skipped`). Uno skip non fa uscire con codice 1.
+
+> **Rate limit**: in produzione `/auth/*` accetta 5 richieste ogni 15 minuti
+> per IP e lo smoke test ne fa 7 → i check che lo toccano diventano skip e
+> il test si ferma con un messaggio esplicito. Per eseguirlo per intero in
+> produzione serve `AUTH_RATE_LIMIT_MAX=20` nel pannello env vars.
 
 **Output**: human-readable con `✓`/`✗`/`○` (skip) + summary finale. Exit code 0 (tutti passati, skip compresi) / 1 (qualche fallimento).
 
 **Limitazioni note**:
-- Verifica funzionalità del player (play/pause/seek), Range request su file audio, Media Session API → richiedono browser reale, NON sono coperte.
+- Verifica funzionalità del player (play/pause/seek), Media Session API → richiedono browser reale, NON sono coperte.
+- La **Range request** sullo stream **è** coperta (check dedicato: `Range: bytes=0-99` → 206 + `Content-Range` + 100 byte).
 - Verifica UI mobile 375px → richiede DevTools, NON coperta.
 - Verifica offline service worker → richiede browser, NON coperta.
 - La **cascade** "brano cancellato → sparisce dai preferiti" non è verificabile

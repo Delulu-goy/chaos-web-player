@@ -1,25 +1,39 @@
-# GitHub Actions — alternative a cPanel auto-deploy
-# Questo workflow esegue build + deploy automatico a Namecheap Stellar via SSH
-# ogni volta che si fa push sul branch main.
+# GitHub Actions — ALTERNATIVA al deploy cPanel
 #
-# PREREQUISITI:
-# 1. Abilitare SSH su Stellar (potrebbe richiedere upgrade del piano)
-# 2. Generare SSH key su GitHub (Settings → Secrets → NEW REPOSITORY SECRET):
-#    - SSH_HOST: nome host SSH di Stellar (es. serverXXX.web-hosting.com)
-#    - SSH_USER: username cPanel
-#    - SSH_KEY: chiave privata SSH (contenuto di id_rsa)
-#    - SSH_PORT: 22 (o porta personalizzata)
-#    - DEPLOY_PATH: /home/$SSH_USER/radio.chaosroom.online
+# Il deploy principale è la pipeline di cPanel Git Version Control
+# (`.cpanel.yml`): fa il pull, installa, tocca `tmp/restart.txt`.
+# Questo workflow esiste per chi preferisce orchestrare il deploy da
+# GitHub: builda il frontend su runner e lo pubblica via SSH.
 #
-# NOTA: Se SSH non è disponibile (Stellar base potrebbe non averlo),
-# usa cPanel Git Version Control con il .cpanel.yml incluso in questo repo.
+# ⚠️ REQUISITI (tutti da configurare in Settings → Secrets):
+#   - SSH_HOST: host SSH di Stellar (o l'IP 198.177.120.31)
+#   - SSH_USER: username cPanel (es. chaouaza)
+#   - SSH_PORT: porta SSH (Stellar: 21098)
+#   - SSH_KEY: chiave privata (id_ed25519, non id_rsa)
+#   - DEPLOY_PATH: /home/<user>/radio.chaosroom.online  ← ROOT DEL CLONE GIT
+#
+# NOTE operative:
+#   - il branch è **master** (non main): è il branch del repo e quello
+#     cui fa checkout il server;
+#   - il frontend NON viene copiato a mano: il `dist/` è committato nel
+#     repo e il server lo serve da `chaos-web-player/frontend/dist`
+#     (Express static). Il build su runner serve solo come verifica:
+#     se il bundle prodotto differisce da quello committato, il commit
+#     del dist è mancante;
+#   - `prisma generate` / `prisma migrate deploy` falliscono su Stellar
+#     (binari WASM non scaricabili): il client è committato e le
+#     migration si applicano da phpMyAdmin → non fanno fallire il deploy;
+#   - il marker di restart va nell'APPLICATION ROOT
+#     (`chaos-web-player/backend/tmp/restart.txt`): è quello che Passenger
+#     guarda per ricaricare il processo Node.
+#
 # Vedi deploy/DEPLOY.md per la guida completa.
 
 name: Deploy to Stellar
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:  # permette trigger manuale
 
 jobs:
@@ -52,6 +66,18 @@ jobs:
         working-directory: chaos-web-player/frontend
         run: npm run build
 
+      - name: Verifica che il dist committato sia allineato ai sorgenti
+        run: |
+          # Il server serve il dist COMMITTATO. Dopo il build il working
+          # tree contiene il bundle fresco: se `git diff` non è pulito, il
+          # dist committato era stale e il frontend servito sarebbe
+          # diverso da quello appena compilato.
+          if ! git diff --quiet -- chaos-web-player/frontend/dist; then
+            echo "::error::dist committato diverso dal build: eseguire 'npm run build && git add dist/ && git commit' prima di pushare"
+            exit 1
+          fi
+          echo "dist committato allineato al build"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -78,34 +104,37 @@ jobs:
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
-          ssh -o StrictHostKeyChecking=no $SSH_USER@$SSH_HOST << EOF
+          set -e
+          ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" << EOF
             set -e
             cd $DEPLOY_PATH
 
-            # Pull latest code
-            git pull origin main
+            # Pull latest code (branch master)
+            git pull --ff-only origin master
 
-            # Backend
+            # Backend: il client Prisma è committato, `prisma generate` su
+            # Stellar fallisce (WASM non scaricabile) → non è fatale.
             cd chaos-web-player/backend
-            npm install --production
-            npx prisma generate
-            npx prisma migrate deploy
+            npm install --production || echo "[deploy] npm install fallito: si prosegue con le dipendenze già presenti"
+            npx prisma generate || echo "[deploy] prisma generate non eseguibile su Stellar: si usa il client committato"
+            npx prisma migrate deploy || echo "[deploy] prisma migrate deploy non eseguibile su Stellar: le migration si applicano da phpMyAdmin"
 
-            # Frontend (ricevuto come artifact, copialo)
-            cd ..
-            mkdir -p frontend/dist
-            rm -rf frontend/dist/*
-            cp -r ~/actions-runner/_work/chaos-radio/chaos-radio/dist/. frontend/dist/
-
-            # Restart
-            mkdir -p tmp
-            touch tmp/restart.txt
+            # Restart: il marker va nell'application root
+            mkdir -p chaos-web-player/backend/tmp
+            touch chaos-web-player/backend/tmp/restart.txt
             echo "Deploy complete"
           EOF
 
       - name: Health check
         run: |
-          sleep 5
+          sleep 8
           curl -f https://radio.chaosroom.online/api/health || exit 1
+
+      - name: Verifica versione in esecuzione
+        run: |
+          # git.sha = commit effettivamente in esecuzione: se non coincide
+          # con quello appena pushato, il backend non è stato ricaricato.
+          curl -s https://radio.chaosroom.online/api/debug

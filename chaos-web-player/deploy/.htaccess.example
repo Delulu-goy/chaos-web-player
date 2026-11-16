@@ -1,5 +1,16 @@
-# Chaos Radio — Apache .htaccess
-# Copia questo file in /home/tuouser/radio.chaosroom.online/.htaccess (la root del subdomain)
+# Chaos Radio — Apache .htaccess (SOLO per host SENZA Passenger)
+#
+# ⚠️ Su Namecheap Stellar questo file NON va usato: il pannello "Setup Node.js
+# App" genera da solo il .htaccess con il blocco Passenger
+# (PassengerAppRoot / PassengerStartupFile / ...) e l'app Express serve sia
+# il frontend (express.static su chaos-web-player/frontend/dist) sia le API,
+# con la SPA fallback e gli header di cache. Se aggiungi regole di rewrite
+# qui, i due livelli si sovrappongono.
+#
+# Questo esempio serve per un host con Apache puro (no Passenger):
+#   - il document root deve puntare a `chaos-web-player/frontend/dist`
+#   - `/api/*` va proxato al backend Node sulla porta 3001
+# Copialo nella root del dominio SOLO in quel caso.
 
 # Abilita rewrite engine
 RewriteEngine On

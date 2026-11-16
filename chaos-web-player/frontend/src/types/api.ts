@@ -1,5 +1,6 @@
 // Chaos Radio — Shared API types
-// Risppecchiano i model Prisma del backend (vedi plans/chaos-radio-player.md §5).
+// Risppecchiano i model Prisma del backend (vedi backend/README.md →
+// "Endpoint API" → "Contratto Track").
 
 export type ID = number;
 

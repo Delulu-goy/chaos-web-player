@@ -1,8 +1,8 @@
 # Chaos Radio — Deploy su Namecheap Stellar
 
 **Data preparazione**: 2026-10-07
-**Ultimo aggiornamento**: 2026-11-14 (path del deploy: `SOURCE_ROOT` senza `/repo` — il backend deployato è quello che gira)
-**Versione**: MVP completo (Fasi 0-5 completate; Fase 2 saltata, da implementare)
+**Ultimo aggiornamento**: 2026-11-16 (frontend servito dall'app Express dal `dist` committato; `SOURCE_ROOT` senza `/repo`; `PIRATE_DAY_DIR` assoluto)
+**Versione**: MVP completo (Fasi 0-8 completate)
 **Target**: subdomain `radio.chaosroom.online`
 
 > ⚠️ **Prima di iniziare**: assicurati di avere accesso a cPanel di Namecheap Stellar con i permessi per creare DB, gestire Setup Node.js App, e usare Git Version Control.
@@ -13,15 +13,15 @@
 
 | Componente | Stato | Note |
 |---|---|---|
-| Frontend (PWA) | ✅ pronto | Build generata **on-deploy** lato server (vedi `.cpanel.yml`) |
-| Backend API | ✅ pronto | Tutti gli endpoint auth/tracks/favorites/playlists/notifications |
-| Auth (login/register/logout) | ✅ testato in dev | Cookie httpOnly + JWT |
-| Player audio | ✅ funzionante | Ma DB vuoto: niente MP3 caricati → "Nessun brano" |
-| Playlist | ✅ funzionante | Lista "SHOW LIST" vuota |
-| Favorites | ✅ completo | Fetch `/api/favorites` + riuso `TrackListItem` con cuore filled |
+| Frontend (PWA) | ✅ in produzione | Il `dist/` è **committato**: il server lo serve da `chaos-web-player/frontend/dist` (Express static). La build la fai in locale, poi committi |
+| Backend API | ✅ in produzione | Tutti gli endpoint auth/tracks/favorites/playlists/notifications + `/api/debug` |
+| Auth (login/register/logout) | ✅ testato in produzione | Cookie httpOnly + JWT, rate limit 5/15min per IP |
+| Player audio | ✅ funzionante | Streaming MP3 con Range request (seek senza riscaricare il file) + waveform reale per brano |
+| Playlist | ✅ funzionante | "SHOW LIST" popolata dallo scanner (cron ogni 5') |
+| Favorites | ✅ completo | `GET/POST/DELETE /api/favorites`; i brani del Pirate Day hanno `favoriteable: false` e il server risponde **403** |
 | Notifications | ✅ completo | Fetch `/api/notifications` + optimistic mark-read |
-| Scan + Seed scripts | ✅ implementati | `scripts/scan.js` (cron ogni 5') + `scripts/pirate-day.js` (cron orario) |
-| Pirate Day | ✅ completo | Countdown live + progress bar + curator + descrizione con highlight + edizione da manifest |
+| Scan + Seed scripts | ✅ in produzione | `scripts/scan.js` (cron ogni 5') + `scripts/pirate-day.js` (cron orario) |
+| Pirate Day | ✅ completo | Countdown live + progress bar + curator + descrizione con highlight + edizioni da manifest (publish e cleanup automatici) |
 
 ---
 
@@ -34,20 +34,28 @@ https://radio.chaosroom.online/
 ├── /icon-*.png        → static (PWA icons)
 ├── /manifest.webmanifest → static (PWA manifest)
 ├── /sw.js              → static (PWA service worker)
-└── /api/*              → rewrite a Node.js (backend)
+└── /api/*              → route Node.js (backend)
 ```
+
+> Tutto (frontend **e** API) è servito dall'**app Express**: il `.htaccess`
+> del doc root è solo il blocco di configurazione Passenger generato da
+> CloudLinux, senza rewrite. I file statici arrivano da
+> `chaos-web-player/frontend/dist` (il `dist` committato) con
+> `Cache-Control: immutable` sui bundle con hash e `no-cache` su
+> `index.html`/`sw.js`.
 
 Sul server Stellar la struttura è:
 ```
 /home/tuouser/radio.chaosroom.online/     ← ROOT DEL CLONE GIT (= doc root)
-/├── .htaccess                          ← config Apache
+├── .htaccess                          ← config Passenger (CloudLinux, NON committato)
 ├── .cpanel.yml                        ← pipeline di deploy
 ├── chaos-web-player/                  ← il pacchetto del repo
 │   ├── backend/                       ← APPLICATION ROOT del Node.js App
-│   │   └── private/audio/             ← MP3 e cover (privato)
-│   └── frontend/                      ← sorgenti Vite
-├── frontend/dist/                     ← build Vite (generata da .cpanel.yml)
-└── tmp/                               ← restart.txt per Passenger
+│   │   ├── private/audio/             ← MP3 (libreria + edizioni Pirate Day)
+│   │   └── tmp/restart.txt            ← marker di restart Passenger
+│   └── frontend/
+│       └── dist/                      ← build Vite COMMITTATA (quello che serve)
+└── tmp/                               ← restart.txt (convenzione alternativa)
 ```
 
 > ⚠️ **Il clone git è la root del documento, NON una sottocartella `repo/`.**
@@ -124,15 +132,16 @@ git remote add origin https://github.com/TUO-USERNAME/chaos-radio.git
 git remote -v
 
 # Push iniziale (ti chiederà username + PAT come password)
-git push -u origin main
+git push -u origin master
 ```
 
 **Nota**: alla richiesta password incolla il PAT del passo 3, non la password GitHub.
 
-Se `main` non è il branch di default (potrebbe essere `master`):
+Il branch del repo è **`master`** (è quello che il server clona e che
+`.github/workflows/deploy.yml` usa). Se il tuo clone ha un branch diverso:
 ```bash
-git branch -M main
-git push -u origin main
+git branch -M master
+git push -u origin master
 ```
 
 ## STEP 5 — Clona il repo in cPanel (Git Version Control)
@@ -169,12 +178,12 @@ Torna in **Git Version Control** → la tua repo → click **Pull or Deploy** �
 
 Questo esegue il `.cpanel.yml`:
 - `npm install --production` in backend
-- `npx prisma generate` e `npx prisma migrate deploy` (crea le 7 tabelle)
-- `npm install` + `npm run build` in frontend
-- Copia `frontend/dist/*` in `/home/tuouser/radio.chaosroom.online/frontend/dist/`
+- `npx prisma generate` e `npx prisma migrate deploy` (su Stellar falliscono: il client è committato e le migration si applicano da phpMyAdmin → la pipeline prosegue comunque)
+- Creazione delle cartelle `private/` e `logs/`
+- **Nessuna build del frontend**: il `dist` è committato e arriva con il pull (l'app Express lo serve da `chaos-web-player/frontend/dist`)
 - Touch `tmp/restart.txt` (restart Passenger)
 
-Tempo: 2-5 minuti. Controlla i log nel pannello per errori.
+Tempo: pochi secondi. Controlla i log nel pannello per errori.
 
 ## STEP 7 — Crea `backend/.env` con credenziali produzione
 
@@ -228,48 +237,36 @@ NODE_ENV=production
 5. Click **Run NPM Install** (senza `postinstall` → dovrebbe completare OK)
 6. Click **Restart** per avviare
 
-> Se Stellar offre solo Node 20 LTS: `tsx` (già in package.json) compila i `.ts` di Prisma a runtime. Funziona out-of-the-box.
+> Node 22 con type-stripping nativo esegue i `.ts` del client Prisma senza
+> dipendenze aggiuntive (`tsx` non è in `package.json`): da Node 22.18 il
+> flag `--experimental-strip-types` non serve nemmeno.
 
-## STEP 9 — Configura `.htaccess` (SPA + proxy /api)
+## STEP 9 — `.htaccess`: cosa serve davvero
 
-cPanel → File Manager → `/home/tuouser/radio.chaosroom.online/`
-
-Crea `.htaccess` (se esiste già, modifica):
+Su Stellar **non** c'è un `.htaccess` da scrivere a mano: il pannello
+"Setup Node.js App" genera il file con la configurazione Passenger
+(`PassengerAppRoot`, `PassengerStartupFile`, …). Il suo contenuto è:
 
 ```apache
-RewriteEngine On
-
-# Force HTTPS
-RewriteCond %{HTTPS} !=on
-RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
-
-# Proxy /api/* → Node backend (porta interna 3001)
-RewriteCond %{REQUEST_URI} ^/api/
-RewriteRule ^api/(.*)$ http://127.0.0.1:3001/api/$1 [P,L]
-
-# SPA fallback: per qualsiasi path non-file, serve index.html
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^.*$ /frontend/dist/index.html [L]
-
-# Cache assets statici (hash nei nomi file)
-<FilesMatch "\.(js|css|png|svg|woff2|ico|webmanifest)$">
-  Header set Cache-Control "public, max-age=31536000, immutable"
-</FilesMatch>
-
-# No cache per index.html, sw.js
-<FilesMatch "^(index\.html|sw\.js|registerSW\.js|workbox-.*\.js)$">
-  Header set Cache-Control "no-cache, must-revalidate"
-</FilesMatch>
-
-# Security headers
-Header always set X-Content-Type-Options "nosniff"
-Header always set X-Frame-Options "DENY"
-Header always set Referrer-Policy "strict-origin-when-cross-origin"
-Header always set Service-Worker-Allowed-Origin "/"
-
-Options -Indexes
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION BEGIN
+PassengerAppRoot "/home/chaouaza/radio.chaosroom.online/chaos-web-player/backend"
+PassengerBaseURI "/"
+PassengerNodejs "/home/chaouaza/nodevenv/radio.chaosroom.online/chaos-web-player/backend/22/bin/node"
+PassengerAppType node
+PassengerStartupFile src/index.js
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION END
 ```
+
+> ⚠️ **Non aggiungere rewrite Apache**: il frontend e le API sono serviti
+> dall'app Express, che fa anche la SPA fallback (`index.html` per ogni
+> path non-file) e i header di cache. Le regole di rewrite in
+> `deploy/.htaccess.example` servono solo su host **senza** Passenger
+> (Apache puro): lì il document root deve puntare a
+> `chaos-web-player/frontend/dist` e `/api/*` va proxato a `:3001`.
+>
+> Se il `.htaccess` del doc root contiene ancora le regole di rewrite
+> mentre gira Passenger, i due livelli si sovrappongono: toglile e lascia
+> fare tutto a Express.
 
 ---
 
@@ -283,29 +280,41 @@ cd "C:\Users\GGsabani\Desktop\chaos web player"
 # Verifica cosa è cambiato
 git status
 
+# Se hai toccato il frontend: build + commit del dist (È il bundle che
+# il server serve, non viene ricostruito lì)
+cd chaos-web-player/frontend && npm run build && cd ../..
+
 # Commit
 git add .
 git commit -m "feat: descrizione delle modifiche"
 
-# Push
-git push origin main
+# Push (branch master)
+git push origin master
 ```
 
 ## Trigger del deploy su cPanel
 
 1. cPanel → **Git Version Control** → la tua repo
 2. Click **Pull or Deploy** → **Update from Remote**
-3. Il `.cpanel.yml` ricostruisce tutto automaticamente (2-5 min)
+3. La `.cpanel.yml` installa le dipendenze e tocca `tmp/restart.txt` (pochi secondi: **non** ricostruisce il frontend)
+4. Verifica: `curl -s https://radio.chaosroom.online/api/debug` → `pid` nuovo, `uptime` azzerato, `git.sha` = commit appena pushato
 
-## Update delle env vars (es. nuovo JWT_SECRET)
+## Update delle env vars
 
-1. cPanel → File Manager → `/home/tuouser/radio.chaosroom.online/chaos-web-player/backend/.env`
-2. Modifica con Editor
-3. Setup Node.js App → Restart
+Le env vars dell'app stanno nel **pannello** (Setup Node.js App →
+Environment variables); il file `backend/.env` serve solo agli script CLI e
+ai cron (`node --env-file=.env`).
 
-## Update solo del backend (no rebuild frontend)
+1. Pannello → Setup Node.js App → Environment variables → modifica
+2. Oppure File Manager → `/home/tuouser/radio.chaosroom.online/chaos-web-player/backend/.env` (per i cron)
+3. Restart: `touch /home/tuouser/radio.chaosroom.online/chaos-web-player/backend/tmp/restart.txt`
+4. Verifica: `curl -s https://radio.chaosroom.online/api/debug` → `env_check`
 
-Salta il `npm run build` in `.cpanel.yml` rimuovendo temporaneamente le righe frontend. Oppure fai le modifiche e trigger il deploy completo (ricostruisce anche il frontend, ci mette 1-2 min in più).
+## Update solo del backend
+
+La pipeline **non** ricostruisce il frontend: il `dist` è committato e
+arriva con il pull. Quindi ogni deploy aggiorna backend e frontend insieme,
+in pochi secondi.
 
 ---
 
@@ -317,11 +326,12 @@ Apri `https://radio.chaosroom.online`:
 - [ ] SSL valido (lucchetto verde)
 - [ ] Clicca "Registrati" → form registrazione funziona
 - [ ] Dopo registrazione → redirect a `/player`
-- [ ] Player mostra "Nessun brano" (DB vuoto)
-- [ ] BottomNav: clicca su Playlist → "SHOW LIST" vuoto
-- [ ] Favorites → empty state "Nessun preferito" (tocca cuore su brano per aggiungere)
-- [ ] Notifications → empty state "Nessuna notifica"
-- [ ] Pirate Day → empty state "Nessuna playlist attiva" (finché non viene pubblicata un'edizione)
+- [ ] Player: brano in play, waveform reale, seek senza ricaricare tutto
+- [ ] BottomNav → "Playlist": la SHOW LIST elenca i brani della libreria
+- [ ] BottomNav → "Pirate Day": countdown + progress bar + curator + brani dell'edizione (se c'è un'edizione attiva; altrimenti empty state "Nessuna playlist attiva")
+- [ ] **I brani del Pirate Day NON hanno il cuore** e `POST /api/favorites/<id>` risponde **403**
+- [ ] Favorites: il cuore sui brani normali funziona (aggiungi → compare in "USER FAVORITES" → rimuovi)
+- [ ] Notifications → lista delle notifiche (read/unread)
 - [ ] Logout → redirect a `/login`
 
 Test API:
@@ -329,9 +339,18 @@ Test API:
 curl https://radio.chaosroom.online/api/health
 # → {"status":"ok",...}
 
+curl -s https://radio.chaosroom.online/api/debug
+# → {"pid":...,"git":{"sha":"..."},"env_check":{...}}   ← il commit in esecuzione
+
 curl -X POST https://radio.chaosroom.online/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"test@example.com","password":"testpass123"}'
+```
+
+Smoke test completo (inclusi i check Pirate Day):
+```bash
+cd chaos-web-player/backend
+SMOKE_BASE_URL=https://radio.chaosroom.online npm run test:smoke
 ```
 
 ---
@@ -582,11 +601,15 @@ Verifica in DevTools → Application → Cookies che `token` abbia flag `Secure`
 
 ### Build frontend fallisce per memoria
 
-Stellar ha limiti RAM. Se `npm run build` esce con OOM, prova a limitare i worker:
-```yaml
-    - cd $DEPLOY_ROOT/chaos-web-player/frontend
-    - NODE_OPTIONS=--max-old-space-size=512 npm run build
+Il frontend **non** viene più costruito sul server (il `dist` è committato): il problema si presenta in **locale**, su Windows, quando `npm run build` esce con OOM. Limita la memoria di Node:
+
+```powershell
+# PowerShell
+$env:NODE_OPTIONS="--max-old-space-size=4096"
+npm run build
 ```
+
+Su Stellar il limite non si presenta: la pipeline non esegue la build.
 
 ---
 
@@ -620,9 +643,9 @@ GET http://localhost:3001/api/auth/me net::ERR_FAILED
 **Fix**:
 1. Svuota `chaos-web-player/frontend/.env.local` (o commenta `VITE_API_URL`)
 2. Svuota `chaos-web-player/frontend/.env.production` (anche se non c'è, crealo vuoto)
-3. Rebuild il frontend: `cd chaos-web-player/frontend && npm run build`
+3. Rebuild **in locale**: `cd chaos-web-player/frontend && npm run build`
 4. Verifica che il dist NON contenga `localhost:3001`: `grep -r "localhost:3001" chaos-web-player/frontend/dist/`
-5. Commit + push + pull su cPanel
+5. `git add dist/ && git commit && git push` → poi "Update from Remote" su cPanel
 
 **Lezione**: **OGNI volta** che modifichi `.env.local`, devi ribuildare il frontend. E `.env.local` non dovrebbe MAI avere un URL assoluto di produzione (solo `localhost:*` per dev).
 

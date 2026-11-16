@@ -98,9 +98,46 @@ Su schermo bloccato la MediaSession **è** l'interfaccia: se l'elemento audio vi
 - `isPlaying` **non** viene persistito: l'autoplay policy bloccherebbe comunque il play automatico, e riprendere a suonare senza interazione sarebbe surprising. Il brano torna caricato e in pausa.
 - Le scritture sono **throttled a 3 s** (`lib/throttledStorage.ts`): `progress` si aggiorna 4 volte al secondo e `localStorage` è sincrono. Flush automatico su `pagehide` / `visibilitychange`.
 
+## Preferiti: il flag `favoriteable`
+
+I brani del **Pirate Day** non sono preferitabili (invariante I3): il server
+li espone con `favoriteable: false` e risponde **403** a
+`POST /api/favorites/:id`.
+
+Il frontend si affida al flag, non al contesto:
+
+- `FavoriteButton` **non renderizza nulla** se `track.favoriteable === false`
+  → il controllo è dentro il componente, non nei caller: nessuna superficie
+  (player, playlist, preferiti, code future) può mostrare un cuore che il
+  server rifiuterebbe;
+- `TrackListItem` rende il cuore solo se `showFavorite && track.favoriteable !== false`
+  → `showFavorite` è l'override per *lista* ("qui niente cuori"), il flag
+  governa il *brano*;
+- `useFavoritesStore.toggle()` non parte su un brano non preferitabile (nessuna
+  richiesta, nessun toast d'errore).
+
+In più c'è il livello contestuale: la tab Pirate Day passa
+`showFavorite={false}` e il player nasconde il cuore quando la coda è
+`queueSource === "pirate-day"`. Sono ridondanze utili: se il backend non è
+aggiornato (payload senza il flag), la UI continua a non offrire il cuore.
+
+`playerStore` persiste lo stato con `version: 2`: la migrazione scarta la coda
+salvata dalla v1 (che non aveva `queueSource`), altrimenti dopo un upgrade
+il player mostrerebbe cuori su brani non preferitabili.
+
 ## Deploy
 
-Il `dist/` è **committato nel repo**: su Stellar il frontend è statico e viene servito da Apache. Dopo ogni modifica ai sorgenti:
+Il `dist/` è **committato nel repo** e il server lo serve così com'è: la
+build la fai **in locale** e la committi, il `git pull` sul server porta
+l'`index.html` e i bundle con i loro hash.
+
+Sul server i file statici sono serviti dall'**app Express**
+(`express.static` su `chaos-web-player/frontend/dist`), non da Apache: il
+`.htaccess` del doc root è solo il blocco Passenger generato da CloudLinux.
+La pipeline `.cpanel.yml` **non** ricostruisce il frontend (farebbe sporcare
+il working tree del server e i pull successivi fallirebbero).
+
+Dopo ogni modifica ai sorgenti:
 
 ```bash
 npm run build

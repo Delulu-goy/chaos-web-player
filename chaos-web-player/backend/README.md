@@ -4,12 +4,12 @@ Backend Express + Prisma per il web player Chaos Radio, **live su [radio.chaosro
 
 ## Stack
 
-- **Node.js 22** (cPanel Stellar prod) o 20+ con `tsx`
+- **Node.js 22** (cPanel Stellar prod, dev WSL) — richiede **≥ 22.6** per `--experimental-strip-types` sui `.ts` del client Prisma; da **22.18** il type-stripping è nativo (nessun flag)
 - **Express 5**
 - **Prisma 7.10** con `@prisma/adapter-mariadb` + driver `mariadb` (MariaDB è compatibile con MySQL 8)
 - **MySQL 8** (via WSL in dev, via cPanel in prod)
 - **JWT** in cookie httpOnly, **bcrypt** per le password
-- **TypeScript runtime** via `tsx` (esegue i `.ts` del client Prisma generato)
+- **TypeScript runtime**: type-stripping nativo di Node (nessuna dipendenza `tsx`)
 
 ## Quickstart (dev locale)
 
@@ -24,7 +24,9 @@ Backend Express + Prisma per il web player Chaos Radio, **live su [radio.chaosro
 ```bash
 # 1. Dipendenze
 npm install
-# dotenv è in dependencies (serve a runtime per `import "dotenv/config"`)
+# dotenv è in dependencies: NON viene importato da src/ (le env vars
+# dell'app arrivano dal pannello cPanel / dal process.env). Resta per
+# prisma7.config.ts e per gli script CLI (--env-file).
 
 # 2. Configurazione env
 cp .env.example .env
@@ -70,12 +72,14 @@ Dopo un riavvio di WSL, rieseguire il blocco con il nuovo `$wslIp`.
 
 | Script | Cosa fa |
 |---|---|
-| `npm run dev` | `tsx` su `src/index.js` (dev, con `tsx` watch) |
-| `npm start` | `tsx src/index.js` (produzione) |
+| `npm run dev` | `node --experimental-strip-types --watch src/index.js` (dev) |
+| `npm start` | `node --experimental-strip-types src/index.js` (produzione) |
 | `npm run scan` | scansiona `private/audio/*.mp3`, estrae tag ID3 + cover, sincronizza `tracks` e calcola le waveform mancanti (vedi `scripts/scan.js`) |
 | `npm run waveforms` | calcola la waveform (picchi) dei brani che non ce l'hanno ancora — vedi `scripts/generate-waveforms.js`. `-- --force` ricalcola tutti |
+| `npm run pirate-day` | pubblica l'edizione Pirate Day dal `manifest.json` (o la ripulisce se scaduta) — vedi `scripts/pirate-day.js` |
+| `npm run pirate-day:init` | genera/aggiorna il `manifest.json` dell'edizione successiva (curatore, descrizione, data) — vedi `scripts/pirate-day-init.js` |
 | `npm run seed` | popola DB con dati demo (admin, playlist show-list, playlist pirate-day-23, 5 notifiche) — vedi `scripts/seed.js` |
-| `npm run test:smoke` | E2E smoke test (auth, tracks, favorites, playlists, notifications). Punto 8 del piano. |
+| `npm run test:smoke` | E2E smoke test (auth, tracks, favorites, playlists, notifications, regole Pirate Day). |
 | `npm run prisma:studio` | GUI Prisma per ispezionare il DB |
 | `npm run prisma:generate` | rigenera il client TypeScript in `generated/prisma/` |
 | `npm run prisma:migrate` | `prisma migrate dev` (crea/aggiorna migration) |
@@ -88,9 +92,38 @@ Dettagli su ogni script: vedi `scripts/README.md`.
 Base: `/api`. Tutti richiedono autenticazione (cookie `token` httpOnly) tranne:
 - `POST /api/auth/register`
 - `POST /api/auth/login`
-- `GET /api/health` (debug: restituisce info sul processo)
+- `GET /api/health` (pubblico: stato del processo)
+- `GET /api/debug` (pubblico: processo, env check, `git.sha`, strumenti di sistema)
 
-Vedi `plans/chaos-radio-player.md` sezione 6 per il contratto completo.
+> `GET /api/debug` espone anche `DB_HOST`, `DB_USER`, `DB_NAME` e la
+> **lunghezza** del JWT secret (non il valore). È una diagnostica utile
+> (serve a capire quale codice sta girando), ma è information disclosure:
+> da proteggere se il dominio diventa pubblico per davvero.
+
+### Contratto `Track`
+
+Ogni brano esposto dalle API (`/api/tracks`, `/api/playlists/*`,
+`/api/favorites`) è il record Prisma **più** il flag:
+
+```jsonc
+{
+  "id": 12,
+  "title": "Fetish For Sampling",
+  "artist": "Marco Hack",
+  "filePath": "/…/private/audio/pirate-day/01 - ….mp3",
+  "coverPath": "/…/private/covers/cover-….jpg",
+  "addedAt": "2026-11-13T22:35:53.407Z",
+  "favoriteable": false        // ← false = il brano NON è preferitabile
+}
+```
+
+`favoriteable` è calcolato dal server con **un solo predicato**
+(`isFavoriteable` in `src/lib/pirateDay.js`): un brano non è preferitabile
+se appartiene a una playlist `PIRATE_DAY` **oppure** se il suo file sta
+dentro `PIRATE_DAY_DIR`. Lo stesso predicato fa da guard in
+`POST /api/favorites/:id` → **403 forbidden**: la UI non può quindi mostrare
+un cuore che il server rifiuterebbe (i brani del Pirate Day non sono
+preferitabili, invariante I3).
 
 ### Tracks
 
@@ -106,6 +139,24 @@ GET /api/tracks/:id/waveform       (auth) → 200 { waveform: "<base64>" } | 404
 
 `GET /api/tracks/:id/waveform` restituisce i 300 picchi del brano serializzati in base64 (400 caratteri). Restituisce 404 se la waveform non è ancora stata calcolata: in quel caso il frontend mostra la waveform decorativa di fallback.
 
+### Favorites
+
+```
+GET    /api/favorites              (auth) → 200 [Track] (i non preferitabili sono esclusi)
+POST   /api/favorites/:trackId     (auth) → 204 | 403 (brano non preferitabile) | 404
+DELETE /api/favorites/:trackId     (auth) → 204
+```
+
+### Playlists
+
+```
+GET /api/playlists/show-list       (auth) → 200 { title, items: [Track] }
+GET /api/playlists/pirate-day      (auth) → 200 { title, curator, description, startsAt, endsAt, items: [Track] } | 404 (nessuna edizione attiva)
+```
+
+La show list **non** contiene mai i brani del Pirate Day (filtro per path
+**e** per dati).
+
 ### Auth flow
 
 ```
@@ -114,6 +165,11 @@ POST /api/auth/login     { email, password }               → 200 { user } + Se
 POST /api/auth/logout    (auth)                           → 204 + Clear-Cookie
 GET  /api/auth/me         (auth)                           → 200 { user }
 ```
+
+`/auth/login` e `/auth/register` sono protetti da un rate limit: **5
+richieste ogni 15 minuti per IP** in produzione, configurabile con
+`AUTH_RATE_LIMIT_MAX` (lo smoke test ne fa 7 → in produzione va alzato o
+si aspetta la fine della finestra).
 
 ## Vincoli Prisma 7 / driver adapter
 
@@ -125,7 +181,7 @@ Prisma 7 ha introdotto breaking changes rispetto a Prisma 5:
 4. **Output custom**: il client viene generato in `generated/prisma/` (non più in `node_modules/@prisma/client`).
 5. **Database URL separate env vars**: `PrismaMariaDb` non accetta connection string, richiede `host`, `port`, `user`, `password`, `database` come campi separati.
 
-Per eseguire il backend serve Node ≥ 22.6 (per `--experimental-strip-types` su `.ts` di Prisma) OPPURE usare `tsx` (Node 18+).
+Per eseguire il backend serve **Node ≥ 22.6** (per `--experimental-strip-types` sui `.ts` di Prisma). Da **Node 22.18** il flag non serve: il type-stripping è attivo di default. `tsx` non è più usato né è una dipendenza.
 
 ## Struttura
 
@@ -138,36 +194,46 @@ backend/
 ├── generated/
 │   └── prisma/              # client TS generato (committato, gitignored per build future)
 ├── src/
-│   ├── index.js             # Express entry: helmet, CORS, routes, static serving, SPA fallback
+│   ├── index.js             # Express entry: helmet, CORS, routes, static serving, SPA fallback, /api/debug
 │   ├── db.js                # Prisma singleton + driver adapter MariaDB
-│   ├── lib/jwt.js           # sign/verify HS256, fail-fast se SECRET mancante
+│   ├── lib/
+│   │   ├── jwt.js           # sign/verify HS256, fail-fast se SECRET mancante
+│   │   ├── paths.js         # percorsi condivisi (PIRATE_DAY_DIR, isPathInside)
+│   │   ├── pirateDay.js     # predicati Pirate Day: pirateDayTrackIds, isPirateDayPath, isFavoriteable, toTrackDto
+│   │   ├── deployInfo.js    # SHA del commit in esecuzione (env DEPLOY_SHA, git, o lettura di .git/HEAD)
+│   │   └── waveformStore.js # path dei file di waveform (nessuna colonna nel DB)
 │   ├── middleware/
 │   │   ├── auth.js          # requireAuth (legge cookie, popola req.user)
-│   │   ├── error.js         # HttpError + errorHandler (Prisma-aware: P2002, P2025)
-│   │   └── rateLimit.js     # authRateLimit (5/15min prod, 100/15min dev)
+│   │   ├── error.js         # HttpError + errorHandler (Prisma-aware: P2002, P2025, 4xx del body parser)
+│   │   └── rateLimit.js     # authRateLimit (5/15min prod, configurabile con AUTH_RATE_LIMIT_MAX) + streamRateLimit
 │   └── routes/
 │       ├── auth.routes.js
 │       ├── tracks.routes.js
 │       ├── favorites.routes.js
 │       ├── playlists.routes.js
 │       └── notifications.routes.js
-└── scripts/                  # Fase 2+8: scan.js + seed.js + smoke-test.mjs
-    ├── _shared.mjs           # env loader, prisma factory, helpers
-    ├── scan.js               # cron: scansiona /private/audio, ID3 → tracks
-    ├── seed.js               # admin + playlist + notifiche demo
-    └── smoke-test.mjs        # E2E smoke test (Fase 8)
+└── scripts/
+    ├── _shared.mjs            # env loader (dotenv), prisma factory, helpers
+    ├── lib/                   # moduli condivisi dagli script (prisma, audioScan, curator)
+    ├── scan.js                # cron: scansiona /private/audio, ID3 → tracks, waveform
+    ├── generate-waveforms.js  # ricalcola solo le waveform mancanti
+    ├── pirate-day.js          # cron: pubblica l'edizione dal manifest / ripulisce quella scaduta
+    ├── pirate-day-init.js     # genera il manifest dell'edizione successiva
+    ├── seed.js                # admin + playlist + notifiche demo
+    └── smoke-test.mjs         # E2E smoke test
 ```
 
 ## Note su deploy produzione (Namecheap Stellar)
 
 In produzione, il backend gira su cPanel Application Manager (Phusion Passenger). Differenze dal dev:
 
-- **`dotenv` resta in `dependencies`**: workaround per Passenger cache. MAI usare `import "dotenv/config"` su cPanel shared (vedi `deploy/DEPLOY.md` per dettagli).
-- **Env vars via pannello cPanel**, NON file `.env`. Il pannello ha priorità.
+- **Env vars via pannello cPanel**, non da un file: il backend **non** carica `.env` (importare `dotenv/config` su cPanel shared rompe per la cache di Passenger — vedi `deploy/DEPLOY.md`). Il file `backend/.env` esiste solo per gli **script CLI e i cron**, che lo leggono con `node --env-file=.env`.
+- **`dotenv` resta in `dependencies`** per `prisma7.config.ts` e per gli script.
 - **Portproxy Windows → WSL** solo per dev. In prod, il backend gira direttamente su Stellar.
 - **MySQL** è in `localhost` (sulla stessa macchina Stellar).
 - **MySQL auth plugin**: `mysql_native_password` (NON `caching_sha2_password` di default in MySQL 8.x, che causa `PROTOCOL_CONNECTION_LOST` con `mariadb` driver).
 - **Prisma `migrate deploy`** NON può essere eseguito senza terminale: si applica la migration via phpMyAdmin import del file `prisma/migrations/<timestamp>_init/migration.sql`.
+- **Il frontend è servito dall'app Express** (`express.static` su `chaos-web-player/frontend/dist`), non da Apache: il `.htaccess` del doc root è solo il blocco di configurazione Passenger generato da CloudLinux.
 
 Per dettagli sul deploy, vedi `../deploy/DEPLOY.md`.
 
@@ -175,13 +241,13 @@ Per dettagli sul deploy, vedi `../deploy/DEPLOY.md`.
 
 L'admin carica MP3 via FTP/SFTP in `backend/private/audio/`. Lo script `npm run scan` legge i tag ID3, estrae cover art embedded, e popola la tabella `tracks`.
 
-In produzione Stellar, scheduleremo il job con **cPanel Cron Jobs**:
+In produzione Stellar il job è schedulato con **cPanel Cron Jobs** (è attivo):
 
 ```
 */5 * * * * cd /home/USER/radio.chaosroom.online/chaos-web-player/backend && /usr/bin/node --experimental-strip-types scripts/scan.js >> logs/scan.log 2>&1
 ```
 
-> Sostituisci `USER` col tuo username cPanel. La cartella `logs/` viene creata automaticamente da `.cpanel.yml` ad ogni deploy.
+> Sostituisci `USER` col tuo username cPanel. La cartella `logs/` viene creata automaticamente da `.cpanel.yml` ad ogni deploy. Gli script leggono le env vars da `backend/.env` (`node --env-file=.env`): `PIRATE_DAY_DIR` va impostata con un path **assoluto** (vedi `deploy/DEPLOY.md`), altrimenti il criterio "è un brano del Pirate Day?" dell'app e quello dello scanner possono divergere.
 
 Env opzionali:
 - `MUSIC_DIR` (default: `private/audio`) — dove cercare i `.mp3`
@@ -247,8 +313,19 @@ C'è un test di regressione nello smoke test (`Range: bytes=0-99` → deve dare 
 
 Serve a capire cosa si può usare su quel server. La stessa sonda è anche in `.cpanel.yml` (`[deploy] ffmpeg: ...`), quindi l'informazione compare anche nel log del deploy.
 
-> **Attenzione**: `/api/debug` è **pubblico** (nessun auth) e restituisce anche `DB_HOST`, `DB_USER`, `DB_NAME`, `DB_PORT` e la **lunghezza** del JWT secret. Il valore del secret non viene esposto, quindi il rischio è basso, ma è information disclosure inutile su un dominio pubblico. Da proteggere (token / allowlist IP / rimozione in produzione). Vedi il backlog hardening **H1** nel piano.
-- **Smoke test E2E** (`scripts/smoke-test.mjs`): 25 verifiche automatizzate sugli endpoint principali. Da usare prima di ogni deploy in prod:
+**`git.sha`** dice quale commit sta **davvero** in esecuzione:
+
+```json
+"git": { "sha": "951be15", "source": "gitdir" }
+```
+
+`source` può essere `env` (`DEPLOY_SHA`), `git` (comando `git` disponibile) o
+`gitdir` (lettura diretta di `.git/HEAD` + `.git/refs/heads/<branch>`: è il
+caso di Passenger, dove `git` non è nel PATH). Con questo campo la trappola
+"frontend nuovo, backend vecchio" è visibile al primo colpo d'occhio.
+
+> **Attenzione**: `/api/debug` è **pubblico** (nessun auth) e restituisce anche `DB_HOST`, `DB_USER`, `DB_NAME`, `DB_PORT` e la **lunghezza** del JWT secret. Il valore del secret non viene esposto, quindi il rischio è basso, ma è information disclosure inutile su un dominio pubblico. Da proteggere (token / allowlist IP / rimozione in produzione).
+- **Smoke test E2E** (`scripts/smoke-test.mjs`): verifiche automatizzate sugli endpoint principali (auth, tracks, favorites, playlists, notifications, Range request, waveform, regole Pirate Day). Da usare prima di ogni deploy in prod:
 
   ```bash
   # Contro dev locale
@@ -260,3 +337,8 @@ Serve a capire cosa si può usare su quel server. La stessa sonda è anche in `.
   # Contro produzione (bash)
   SMOKE_BASE_URL=https://radio.chaosroom.online npm run test:smoke
   ```
+
+  In produzione il rate limit su `/auth/*` (5 req / 15 min per IP) viene
+  esaurito dal test stesso: i check che lo toccano diventano **skip** (non
+  fallimenti) e il test si ferma con un messaggio esplicito. Per eseguirlo
+  per intero serve `AUTH_RATE_LIMIT_MAX=20` nel pannello env vars.
