@@ -19,6 +19,19 @@ export class HttpError extends Error {
 }
 
 export function errorHandler(err, req, res, _next) {
+  // Client che abbandona la richiesta (seek audio, chiusura della tab,
+  // cambio brano): NON è un errore del server. Senza questo filtro lo
+  // stderr.log si riempie di "[unhandled error] Request aborted" e
+  // nasconde i problemi veri.
+  if (
+    err?.code === "ECONNABORTED" ||
+    err?.type === "aborted" ||
+    err?.message === "Request aborted"
+  ) {
+    if (!res.headersSent) res.destroy();
+    return;
+  }
+
   // Errori app lanciati esplicitamente
   if (err instanceof HttpError) {
     return res.status(err.status).json({
