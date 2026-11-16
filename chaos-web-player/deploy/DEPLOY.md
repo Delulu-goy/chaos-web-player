@@ -455,6 +455,32 @@ variables, oppure in `backend/.env`):
 > `backend/.env`, perché i cron girano fuori dal contesto dell'app e non
 > vedono quelle impostate nel pannello.
 
+### `PIRATE_DAY_DIR` va impostata in **due** posti, con lo stesso path
+
+La cartella del Pirate Day è il punto in cui l'app Express e gli script CLI
+devono essere d'accordo: l'app decide se un brano è "pirate day" (quindi non
+preferitabile, `isPirateDayPath`), gli script decidono cosa pubblicare e cosa
+ripulire. Se i due path divergono, un brano è pirata per uno e non per
+l'altro.
+
+| Dove | Perché | Valore |
+|---|---|---|
+| **pannello** (Setup Node.js App → Environment variables) | l'app Express non carica `.env`: legge solo `process.env` | `/home/<user>/radio.chaosroom.online/chaos-web-player/backend/private/audio/pirate-day` |
+| **`backend/.env`** | i cron girano con `node --env-file=.env` | idem, path assoluto |
+
+Usare il path **assoluto**: il default `private/audio/pirate-day` viene
+risolto rispetto al cwd, che per l'app è l'application root e per gli script
+la loro cartella — oggi coincidono, ma non è garantito.
+
+> Il pannello CloudLinux salva le env vars in
+> `~/.cl.selector/node-selector.json` (chiave `env_vars`): si può modificare
+> da lì da SSH, ma **il pannello è la fonte di verità** — se lo si edita a
+> mano, la prossima modifica dal pannello può sovrascriverlo.
+>
+> Dopo aver cambiato una env var: `touch <application root>/tmp/restart.txt`
+> (ricarica Passenger) e verifica con
+> `curl -s https://radio.chaosroom.online/api/debug` → campo `env_check`.
+
 > Lo script fa il chdir sull'application root e si rilancia da solo con
 > `--experimental-strip-types` se il Node in uso non sa importare i `.ts`
 > (client Prisma). Su Node ≥ 22.18 non serve: il type stripping è attivo
