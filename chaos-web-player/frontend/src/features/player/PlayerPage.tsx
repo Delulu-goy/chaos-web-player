@@ -9,7 +9,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Share2,
   Repeat,
   SkipBack,
   Play,
@@ -134,16 +133,6 @@ export default function PlayerPage() {
     seekAudio(ratio);
   };
 
-  const handleShare = () => {
-    if (!currentTrack) return;
-    const url = `${window.location.origin}/player`;
-    if (navigator.share) {
-      navigator.share({ title: currentTrack.title, text: currentTrack.artist, url });
-    } else {
-      void navigator.clipboard?.writeText(url);
-    }
-  };
-
   // Stato caricamento
   if (library === null && !error) {
     return (
@@ -217,7 +206,6 @@ export default function PlayerPage() {
         onNext={next}
         onPrev={prev}
         onSeek={handleSeek}
-        onShare={handleShare}
         onMute={() => setMuted(!isMuted)}
         onPlay={(t) =>
           usePlayerStore
@@ -249,7 +237,6 @@ interface PlayerViewProps {
   onNext: () => void;
   onPrev: () => void;
   onSeek: (ratio: number) => void;
-  onShare: () => void;
   onMute: () => void;
   onPlay: (t: Track) => void;
   /** Picchi reali del brano (null → fallback decorativo). */
@@ -270,7 +257,6 @@ function PlayerView({
   onNext,
   onPrev,
   onSeek,
-  onShare,
   onMute,
   onPlay,
   peaks,
@@ -302,13 +288,6 @@ function PlayerView({
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-4 pt-1">
-          <button
-            aria-label="Condividi"
-            onClick={onShare}
-            className="text-white/80 transition-opacity hover:opacity-60"
-          >
-            <Share2 size={22} />
-          </button>
           {showFavorite ? <FavoriteButton track={track} size={22} /> : null}
         </div>
       </div>
