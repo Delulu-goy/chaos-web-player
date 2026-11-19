@@ -19,7 +19,7 @@ import type { ShowListResponse, Track } from "../../types/api";
 
 export default function PlaylistPage() {
   const navigate = useNavigate();
-  const unread = useNotificationsStore((s) => s.unreadCount());
+  const unread = useNotificationsStore((s) => s.unreadCount);
   const onTabChange = (k: TabKey) => navigate(`/${k}`);
 
   const [items, setItems] = useState<ShowListResponse["items"] | null>(null);

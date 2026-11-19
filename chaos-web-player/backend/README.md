@@ -157,6 +157,39 @@ GET /api/playlists/pirate-day      (auth) → 200 { title, curator, description,
 La show list **non** contiene mai i brani del Pirate Day (filtro per path
 **e** per dati).
 
+### Notifications
+
+```
+GET    /api/notifications?page=0&limit=20  (auth) → 200 { items, total, page, limit, unreadCount }
+POST   /api/notifications                   (auth + admin) → 201 { id, title, body, kind, createdAt, read } | 400 | 403 | 404 | 409
+POST   /api/notifications/read-all          (auth) → 204
+POST   /api/notifications/:id/read          (auth) → 204 | 403 (notifica target di un altro utente) | 404
+DELETE /api/notifications/:id               (auth + admin) → 204 | 404
+```
+
+Le notifiche sono uno **storico**: `GET` restituisce tutto quello che
+l'utente può vedere (broadcast `user_id IS NULL` + notifiche target a lui),
+dal più recente al più vecchio, **inclusi quelle già lette**.
+
+- `read` / `readAt` dicono se (e quando) l'utente le ha viste: lo stato è
+  per utente e vive in `notification_reads`.
+- `unreadCount` è calcolato dal server (con la paginazione non può essere
+  derivato dal client).
+- `kind` dice l'origine: `NEW_TRACKS` (brani nuovi in show list),
+  `PIRATE_DAY` (nuova edizione) o `CUSTOM` (creata a mano).
+- `meta` porta i dati strutturati (brani arrivati, edizione, slug…).
+
+**Lettura**: il solo fatto di **visitare** la pagina notifiche chiama
+`POST /api/notifications/read-all`, che marca come lette **tutte** le
+notifiche visibili (non solo la pagina caricata). Non serve cliccare le
+notifiche.
+
+**Creazione (admin)**: `POST /api/notifications` accetta
+`{ title?, body, userId?, dedupeKey? }` — `body` obbligatorio (max 2000
+caratteri), `userId` omesso = broadcast. Sono ammessi solo gli admin
+(elencati in `ADMIN_EMAILS`): se la variabile non è impostata l'endpoint
+è chiuso a tutti. `dedupeKey` rende la creazione idempotente.
+
 ### Auth flow
 
 ```
@@ -188,7 +221,7 @@ Per eseguire il backend serve **Node ≥ 22.6** (per `--experimental-strip-types
 ```
 backend/
 ├── prisma/
-│   ├── schema.prisma        # 7 modelli + 1 enum
+│   ├── schema.prisma        # 7 modelli + 2 enum
 │   └── migrations/          # versionate, applicate in prod via phpMyAdmin import
 ├── prisma7.config.ts        # config Prisma 7 (DATABASE_URL)
 ├── generated/
@@ -199,13 +232,15 @@ backend/
 │   ├── lib/
 │   │   ├── jwt.js           # sign/verify HS256, fail-fast se SECRET mancante
 │   │   ├── paths.js         # percorsi condivisi (PIRATE_DAY_DIR, isPathInside)
+│   │   ├── notifications.js # creazione notifiche condivisa da API e script (createNotification, notifyNewTracks, notifyPirateDay)
 │   │   ├── pirateDay.js     # predicati Pirate Day: pirateDayTrackIds, isPirateDayPath, isFavoriteable, toTrackDto
 │   │   ├── deployInfo.js    # SHA del commit in esecuzione (env DEPLOY_SHA, git, o lettura di .git/HEAD)
 │   │   └── waveformStore.js # path dei file di waveform (nessuna colonna nel DB)
 │   ├── middleware/
 │   │   ├── auth.js          # requireAuth (legge cookie, popola req.user)
+│   │   ├── admin.js         # requireAdmin (email in ADMIN_EMAILS; vuoto = endpoint chiuso)
 │   │   ├── error.js         # HttpError + errorHandler (Prisma-aware: P2002, P2025, 4xx del body parser)
-│   │   └── rateLimit.js     # authRateLimit (5/15min prod, configurabile con AUTH_RATE_LIMIT_MAX) + streamRateLimit
+│   │   └── rateLimit.js     # authRateLimit (5/15min prod, AUTH_RATE_LIMIT_MAX) + streamRateLimit + notificationsRateLimit
 │   └── routes/
 │       ├── auth.routes.js
 │       ├── tracks.routes.js
@@ -215,7 +250,7 @@ backend/
 └── scripts/
     ├── _shared.mjs            # env loader (dotenv), prisma factory, helpers
     ├── lib/                   # moduli condivisi dagli script (prisma, audioScan, curator)
-    ├── scan.js                # cron: scansiona /private/audio, ID3 → tracks, waveform
+    ├── scan.js                # cron: scansiona /private/audio, ID3 → tracks, waveform, notifica nuovi brani
     ├── generate-waveforms.js  # ricalcola solo le waveform mancanti
     ├── pirate-day.js          # cron: pubblica l'edizione dal manifest / ripulisce quella scaduta
     ├── pirate-day-init.js     # genera il manifest dell'edizione successiva
@@ -257,6 +292,12 @@ Env opzionali:
 - `WAVEFORM_TIMEOUT_MS` (default: 60000) — timeout per brano durante il calcolo della waveform
 
 Lo script è idempotente: rieseguendolo non duplica righe (UPSERT su `file_path`) e cancella i track orfani (file presenti in DB ma non più su disco). Vedere `scripts/README.md` per i dettagli.
+
+**Notifica "nuovi brani in Show List"**: a ogni giro lo scanner confronta i
+file trovati con quelli già in `tracks`: se sono entrati brani nuovi (e non
+sono brani del Pirate Day, che hanno già la notifica dedicata) crea **una
+notifica broadcast per batch** con l'elenco dei brani. Il giro senza novità
+non genera nulla.
 
 ## Waveform dei brani (picchi)
 

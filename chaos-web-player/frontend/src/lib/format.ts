@@ -32,6 +32,18 @@ export function formatDate(iso: string): string {
 }
 
 /**
+ * Formatta una data ISO in "DD/MM/YY HH:MM" (data + ora).
+ * Usata dalle notifiche, ordinate per data e ora.
+ */
+export function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const hours = String(d.getHours()).padStart(2, "0");
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  return `${formatDate(iso)} ${hours}:${minutes}`;
+}
+
+/**
  * Formatta una differenza di tempo come countdown "Xh.Ym left" / "Xm left" / "Xs left".
  * Se expiresAt è nel passato ritorna "Ended".
  */

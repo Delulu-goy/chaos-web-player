@@ -22,6 +22,7 @@ model User {
 
   favorites    Favorite[]
   reads        NotificationRead[]
+  notifications Notification[]
 
   @@map("users")
 }
@@ -102,16 +103,27 @@ model PlaylistItem {
 
 // ────────────────────────────────────────────────────────────────
 // Notification — broadcast (userId null) o targeted a un utente
+//
+// `kind` distingue l'origine (nuovi brani, Pirate Day, custom) e
+// `meta` porta i dati strutturati (brani, edizione, slug).
+// `dedupeKey` rende idempotente la creazione (una notifica per
+// edizione Pirate Day, chiave opzionale nelle custom).
 // ────────────────────────────────────────────────────────────────
 model Notification {
-  id        Int       @id @default(autoincrement())
-  userId    Int?      @map("user_id")
-  body      String    @db.Text
-  createdAt DateTime  @default(now()) @map("created_at")
+  id        Int              @id @default(autoincrement())
+  userId    Int?             @map("user_id")
+  kind      NotificationKind @default(CUSTOM) @map("kind")
+  title     String?          @map("title")
+  body      String           @db.Text
+  meta      Json?            @map("meta")
+  dedupeKey String?          @unique @map("dedupe_key")
+  createdAt DateTime         @default(now()) @map("created_at")
 
   reads     NotificationRead[]
+  user      User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([createdAt])
+  @@index([userId, createdAt])
   @@map("notifications")
 }
 
@@ -124,6 +136,7 @@ model NotificationRead {
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([notificationId, userId])
+  @@index([userId])
   @@map("notification_reads")
 }
 
@@ -133,4 +146,14 @@ model NotificationRead {
 enum PlaylistKind {
   SHOW
   PIRATE_DAY
+}
+
+// Origine di una notifica.
+enum NotificationKind {
+  // Nuovi brani entrati nella show list (script scan.js)
+  NEW_TRACKS
+  // Nuova edizione Pirate Day pubblicata (script pirate-day.js)
+  PIRATE_DAY
+  // Notifica creata a mano via POST /api/notifications
+  CUSTOM
 }

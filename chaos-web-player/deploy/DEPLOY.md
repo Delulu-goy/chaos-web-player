@@ -19,7 +19,7 @@
 | Player audio | ✅ funzionante | Streaming MP3 con Range request (seek senza riscaricare il file) + waveform reale per brano |
 | Playlist | ✅ funzionante | "SHOW LIST" popolata dallo scanner (cron ogni 5') |
 | Favorites | ✅ completo | `GET/POST/DELETE /api/favorites`; i brani del Pirate Day hanno `favoriteable: false` e il server risponde **403** |
-| Notifications | ✅ completo | Fetch `/api/notifications` + optimistic mark-read |
+| Notifications | ✅ completo | Storico paginato in `GET /api/notifications` + `POST /api/notifications` (solo admin) + `POST /api/notifications/read-all` |
 | Scan + Seed scripts | ✅ in produzione | `scripts/scan.js` (cron ogni 5') + `scripts/pirate-day.js` (cron orario) |
 | Pirate Day | ✅ completo | Countdown live + progress bar + curator + descrizione con highlight + edizioni da manifest (publish e cleanup automatici) |
 
@@ -206,9 +206,16 @@ JWT_SECRET=INSERISCI_QUI_OUTPUT_DI_OPENSSL_RAND_HEX_64
 
 PORT=3001
 NODE_ENV=production
+
+# Admin autorizzato a creare notifiche custom (POST /api/notifications).
+# Se assente, l'endpoint è chiuso a tutti.
+ADMIN_EMAILS=admin@chaosroom.online
 ```
 
 > ⚠️ Il file NON verrà sovrascritto dai prossimi pull (è in `.gitignore`).
+
+> ℹ️ `ADMIN_EMAILS` va messo **anche** nel pannello (Setup Node.js App →
+> Environment variables): l'app Express non carica `.env`.
 
 ## STEP 7b — Applica migration al DB (via phpMyAdmin)
 
@@ -220,6 +227,18 @@ NODE_ENV=production
 4. Click **Choose File** → naviga a `/home/chaouaza/radio.chaosroom.online/chaos-web-player/backend/prisma/migrations/20261006105522_init/migration.sql`
 5. Click **Go** in fondo alla pagina
 6. Verifica che le 7 tabelle siano presenti nella sidebar: `users`, `tracks`, `favorites`, `playlists`, `playlist_items`, `notifications`, `notification_reads`
+
+> ⚠️ **Ogni nuova migration va importata a mano, una per una, in ordine.**
+> Se il repo contiene più cartelle in `prisma/migrations/`, importale tutte
+> dalla più vecchia alla più recente. Al momento:
+> - `20261006105522_init` (schema iniziale)
+> - `20261119173000_notification_history_kind` (notifiche: colonne `kind`,
+>   `title`, `meta`, `dedupe_key`, indice `user_id+created_at`, FK
+>   `notifications.user_id → users.id`)
+>
+> **La notifica "nuovi brani" e quella Pirate Day funzionano anche senza la
+> migration** (usano solo `body`), ma senza `kind`/`title` la UI non mostra
+> l'etichetta dell'origine e le notifiche custom non hanno `title`.
 
 ## STEP 8 — Setup Node.js App (Application Manager)
 
@@ -331,7 +350,7 @@ Apri `https://radio.chaosroom.online`:
 - [ ] BottomNav → "Pirate Day": countdown + progress bar + curator + brani dell'edizione (se c'è un'edizione attiva; altrimenti empty state "Nessuna playlist attiva")
 - [ ] **I brani del Pirate Day NON hanno il cuore** e `POST /api/favorites/<id>` risponde **403**
 - [ ] Favorites: il cuore sui brani normali funziona (aggiungi → compare in "USER FAVORITES" → rimuovi)
-- [ ] Notifications → lista delle notifiche (read/unread)
+- [ ] Notifications → lista delle notifiche (storico: le lette restano in grigio); visiting la pagina le marca come lette
 - [ ] Logout → redirect a `/login`
 
 Test API:

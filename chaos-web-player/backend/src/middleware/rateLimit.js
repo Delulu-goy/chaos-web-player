@@ -52,3 +52,27 @@ export const streamRateLimit = rateLimit({
     details: { retryAfterSeconds: 60 },
   },
 });
+
+/**
+ * Rate limit sulla creazione di notifiche (POST /api/notifications).
+ *
+ * L'endpoint è riservato agli admin, ma il limite protegge anche da
+ * script/bug che chiamano l'API in loop. 30/ora è ampio per l'uso
+ * manuale (le notifiche Pirate Day e "nuovi brani" nascono dai cron,
+ * non passano da qui).
+ */
+const NOTIFICATIONS_MAX = parseInt(
+  process.env.NOTIFICATIONS_RATE_LIMIT_MAX ?? "",
+  10,
+) || (process.env.NODE_ENV === "production" ? 30 : 300);
+
+export const notificationsRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 ora
+  limit: NOTIFICATIONS_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "rate_limited",
+    details: { retryAfterMinutes: 60 },
+  },
+});

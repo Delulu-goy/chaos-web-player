@@ -12,6 +12,9 @@
 //    ricostruiti a ogni giro con i brani della libreria ESCLUSI quelli
 //    sotto PIRATE_DAY_DIR (i brani del Pirate Day vivono solo nella
 //    playlist dell'edizione, mai nella show list).
+//  - Crea la notifica broadcast "nuovi brani in Show List" quando
+//    entrano brani nuovi (una notifica per batch di scan). I brani del
+//    Pirate Day sono esclusi: hanno la notifica dedicata.
 //
 // Uso:
 //   node --experimental-strip-types scripts/scan.js
@@ -39,6 +42,7 @@ import { makePrisma } from "./lib/prisma.mjs";
 import { computeWaveform, serializeWaveform } from "./lib/waveform.mjs";
 import { waveformFileFor, waveformsDir } from "../src/lib/waveformStore.js";
 import { isPathInside, pirateDayDir } from "../src/lib/paths.js";
+import { notifyNewTracks } from "../src/lib/notifications.js";
 import { makeLogger, scanDirectory, walkMp3 } from "./lib/audioScan.mjs";
 
 loadEnv();
@@ -89,6 +93,43 @@ async function cleanOrphanCovers(usedCoverSet) {
     }
   }
   return removed;
+}
+
+/**
+ * Crea la notifica broadcast "nuovi brani in Show List".
+ *
+ * Una notifica per batch di scan: il testo elenca i brani entrati in
+ * quel giro. Nessuna notifica se non è arrivato niente di nuovo (è il
+ * caso normale: il cron gira ogni 5 minuti).
+ *
+ * I brani sotto PIRATE_DAY_DIR sono esclusi: finiscono solo nella
+ * playlist dell'edizione e hanno già la notifica dedicata che crea
+ * `pirate-day.js`.
+ *
+ * @param {string[]} audioFiles file .mp3 trovati nel walk
+ * @param {Set<string>} knownFilePaths filePath già presenti in `tracks`
+ *                               PRIMA della scansione
+ */
+async function notifyNewShowListTracks(audioFiles, knownFilePaths) {
+  const candidates = audioFiles.filter((f) => !knownFilePaths.has(f));
+  if (candidates.length === 0) return;
+
+  // Verifica sul DB: i file con tag corrotti (o con upsert fallito) non
+  // sono finiti in `tracks`, quindi non devono generare notifica.
+  const rows = await prisma.track.findMany({
+    where: { filePath: { in: candidates } },
+    select: { id: true, title: true, artist: true, filePath: true },
+  });
+
+  const showTracks = rows.filter((t) => !isPathInside(PIRATE_DAY_DIR, t.filePath));
+  if (showTracks.length === 0) return;
+
+  const { notification, created } = await notifyNewTracks(prisma, showTracks);
+  if (created) {
+    logger.log(
+      `notifica: ${showTracks.length} nuovi brani in show list (#${notification.id})`,
+    );
+  }
 }
 
 /**
@@ -167,6 +208,15 @@ async function main() {
   const audioFiles = walkMp3(MUSIC_DIR, logger);
   console.log(`[scan] trovati ${audioFiles.length} file .mp3`);
 
+  // ── 0. Snapshot dei brani già in DB ────────────────────────────────
+  // Serve a capire quali file sono NUOVI: `scanDirectory` fa un upsert e
+  // conta anche gli aggiornamenti, quindi `upserted` non basta.
+  const knownFilePaths = new Set(
+    (await prisma.track.findMany({ select: { filePath: true } })).map(
+      (t) => t.filePath,
+    ),
+  );
+
   // ── 1. Parse + UPSERT in batch ──────────────────────────────────────
   const { upserted, skipped } = await scanDirectory(prisma, {
     root: MUSIC_DIR,
@@ -231,6 +281,20 @@ async function main() {
       }`,
     );
     process.exitCode = 1;
+  }
+
+  // ── 4b. Notifica: nuovi brani in show list ──────────────────────────
+  // Va DOPO la manutenzione della show list: la notifica deve riflettere
+  // quello che è finito davvero in playlist. Un errore qui non deve mai
+  // far fallire lo scan.
+  try {
+    await notifyNewShowListTracks(audioFiles, knownFilePaths);
+  } catch (err) {
+    console.warn(
+      `[scan] ⚠ notifica nuovi brani fallita (scan completato comunque): ${
+        err.message ?? err
+      }`,
+    );
   }
 
   // ── 5. Waveform dei brani (picchi per il player) ─────────────────────

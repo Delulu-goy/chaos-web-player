@@ -1,7 +1,13 @@
 // Chaos Radio — NotificationsPage
-// Titolo "UPDATES" — lista delle notifiche dell'utente.
-// Click su una notifica non letta → POST /api/notifications/:id/read (optimistic).
-// Riusa useNotificationsStore (fetch + markRead con optimistic update + rollback).
+// Titolo "UPDATES" — storico delle notifiche, ordinato per data e ora
+// (dal più recente al più vecchio).
+//
+// Le notifiche NON spariscono: restano in lista e si distinguono per lo
+// stato letto (non lette in evidenza, lette in grigio).
+//
+// Il solo fatto di visitare questa pagina marca come lette tutte le
+// notifiche visibili (POST /api/notifications/read-all): non serve
+// cliccare nessuna notifica.
 
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
@@ -19,14 +25,23 @@ export default function NotificationsPage() {
   const items = useNotificationsStore((s) => s.items);
   const isLoading = useNotificationsStore((s) => s.isLoading);
   const error = useNotificationsStore((s) => s.error);
-  const unread = useNotificationsStore((s) => s.unreadCount());
+  const hasMore = useNotificationsStore((s) => s.hasMore);
+  const unread = useNotificationsStore((s) => s.unreadCount);
   const fetchNotifications = useNotificationsStore((s) => s.fetch);
-  const markRead = useNotificationsStore((s) => s.markRead);
+  const loadMore = useNotificationsStore((s) => s.loadMore);
+  const markAllRead = useNotificationsStore((s) => s.markAllRead);
 
   // Fetch ad ogni mount della pagina (utile per refresh manuale)
   useEffect(() => {
-    fetchNotifications();
+    void fetchNotifications();
   }, [fetchNotifications]);
+
+  // Visita della pagina ⇒ tutte le notifiche visibili diventano lette.
+  // Nessun update ottimistico: al caricamento successivo risultano
+  // grigie (è il comportamento richiesto).
+  useEffect(() => {
+    void markAllRead();
+  }, [markAllRead]);
 
   return (
     <AppShell
@@ -63,15 +78,22 @@ export default function NotificationsPage() {
         <ul className="mt-2 flex flex-col">
           {items.map((n) => (
             <li key={n.id}>
-              <NotificationItem
-                notification={n}
-                onRead={(id) => {
-                  void markRead(id);
-                }}
-              />
+              <NotificationItem notification={n} />
             </li>
           ))}
         </ul>
+      )}
+
+      {hasMore && (
+        <div className="mt-6 flex justify-center">
+          <button
+            type="button"
+            onClick={() => void loadMore()}
+            className="border border-white/20 px-4 py-2 text-xs tracking-widest transition-opacity hover:opacity-70"
+          >
+            CARICA ALTRE
+          </button>
+        </div>
       )}
     </AppShell>
   );

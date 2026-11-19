@@ -140,7 +140,11 @@ export type PlaylistItemScalarFieldEnum = (typeof PlaylistItemScalarFieldEnum)[k
 export const NotificationScalarFieldEnum = {
   id: 'id',
   userId: 'userId',
+  kind: 'kind',
+  title: 'title',
   body: 'body',
+  meta: 'meta',
+  dedupeKey: 'dedupeKey',
   createdAt: 'createdAt'
 } as const
 
@@ -229,7 +233,9 @@ export type PlaylistOrderByRelevanceFieldEnum = (typeof PlaylistOrderByRelevance
 
 
 export const NotificationOrderByRelevanceFieldEnum = {
-  body: 'body'
+  title: 'title',
+  body: 'body',
+  dedupeKey: 'dedupeKey'
 } as const
 
 export type NotificationOrderByRelevanceFieldEnum = (typeof NotificationOrderByRelevanceFieldEnum)[keyof typeof NotificationOrderByRelevanceFieldEnum]

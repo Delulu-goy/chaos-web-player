@@ -44,6 +44,7 @@ import {
 import { makePrisma } from "./lib/prisma.mjs";
 import { waveformFileFor } from "../src/lib/waveformStore.js";
 import { pirateDayDir } from "../src/lib/paths.js";
+import { notifyPirateDay } from "../src/lib/notifications.js";
 import { normalizeCuratorLinks } from "./lib/curator.mjs";
 import {
   makeLogger,
@@ -343,11 +344,12 @@ async function publishPhase(prisma, manifest, now) {
   await prisma.$transaction(operations);
 
   // ── Notifica broadcast (idempotente: una per edizione) ─────────────
-  const body = `Pirate Day #${manifest.edition} is on the air`;
-  const alreadyNotified = await prisma.notification.findFirst({ where: { body } });
-  if (!alreadyNotified) {
-    await prisma.notification.create({ data: { userId: null, body } });
-  }
+  await notifyPirateDay(prisma, {
+    edition: manifest.edition,
+    slug,
+    playlistId: playlist.id,
+    endsAt,
+  });
 
   logger.log(
     `✓ #${manifest.edition} pubblicato (endsAt=${endsAt?.toISOString() ?? "null"})`,

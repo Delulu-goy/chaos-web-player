@@ -15,3 +15,12 @@ export const PlaylistKind = {
 } as const
 
 export type PlaylistKind = (typeof PlaylistKind)[keyof typeof PlaylistKind]
+
+
+export const NotificationKind = {
+  NEW_TRACKS: 'NEW_TRACKS',
+  PIRATE_DAY: 'PIRATE_DAY',
+  CUSTOM: 'CUSTOM'
+} as const
+
+export type NotificationKind = (typeof NotificationKind)[keyof typeof NotificationKind]

@@ -18,34 +18,12 @@ import { usePlayerStore } from "../../store/playerStore";
 import { useNotificationsStore } from "../../store/notificationsStore";
 import { api, ApiError } from "../../lib/api";
 import { formatCountdown } from "../../lib/format";
+import { renderRichText } from "../../lib/richText";
 import type { PirateDayResponse, Track } from "../../types/api";
-
-/**
- * Parser minimal della descrizione: supporta **testo** per highlight
- * (rendering in arancione + bold), resto plain text con whitespace preservato.
- */
-function renderDescription(text: string) {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return parts.map((part, i) => {
-    const m = /^\*\*([^*]+)\*\*$/.exec(part);
-    if (m) {
-      return (
-        <span
-          key={i}
-          className="font-bold"
-          style={{ color: "#FF5A1F" }}
-        >
-          {m[1]}
-        </span>
-      );
-    }
-    return <span key={i}>{part}</span>;
-  });
-}
 
 export default function PirateDayPage() {
   const navigate = useNavigate();
-  const unread = useNotificationsStore((s) => s.unreadCount());
+  const unread = useNotificationsStore((s) => s.unreadCount);
   const onTabChange = (k: TabKey) => navigate(`/${k}`);
 
   const [data, setData] = useState<PirateDayResponse | null>(null);
@@ -222,7 +200,7 @@ export default function PirateDayPage() {
       {/* Description */}
       {data.description && (
         <p className="mt-6 whitespace-pre-line leading-relaxed text-white/80">
-          {renderDescription(data.description)}
+          {renderRichText(data.description)}
         </p>
       )}
 

@@ -37,11 +37,21 @@ chaos web player/               ← ROOT DEL REPO (è qui .cpanel.yml)
 | 5.1 — Player | ✅ | Audio reale, waveform, controls, Media Session |
 | 5.2 — Playlist | ✅ | "SHOW LIST" con riuso TrackListItem |
 | 5.3 — Favorites | ✅ | "USER FAVORITES" con riuso TrackListItem + useFavoritesStore |
-| 5.4 — Notifications | ✅ | "UPDATES" con optimistic mark-read via useNotificationsStore |
+| 5.4 — Notifications | ✅ | "UPDATES": storico paginato (le lette restano in grigio), notifica "nuovi brani in show list" + Pirate Day + creazione custom via admin |
 | 5.5 — Pirate Day | ✅ | Countdown live + progress bar + curator + descrizione con **highlight** |
 | 6 — PWA & polish | ✅ | Toast/snackbar globale, LoadingView consistente, EmptyState con varianti, safe-area iOS, auto-logout su 401, feedback errori rete/audio |
 | 7 — Deploy | ✅ | **Live su radio.chaosroom.online** |
 | 8 — Hardening & bugfix | ✅ | E2E smoke test automatico, Range request reali sullo stream, race condition del player, preferiti a fonte unica, persistenza del player, waveform reali per brano |
+
+### Ultimi interventi (sessione 2026-11-19)
+
+| Area | Cosa |
+|---|---|
+| **Notifiche: storico** | Le notifiche lette **sparivano** dalla lista (l'endpoint filtrava le broadcast già lette) e quelle target erano sempre `read: true`. Ora `GET /api/notifications` restituisce lo storico paginato `{items, total, page, limit, unreadCount}`: le lette restano in grigio |
+| **Notifiche: lettura** | Niente più click-per-notifica: **visitare** la pagina notifiche chiama `POST /api/notifications/read-all` e le marchia tutte come lette (stato per utente in `notification_reads`) |
+| **Notifiche: nuovi brani** | Il cron `scan.js` non notificava nulla quando entravano MP3 in libreria. Ora ogni batch di scan con brani nuovi genera una notifica broadcast "Nuovi brani in Show List" (i brani del Pirate Day sono esclusi: hanno già la loro) |
+| **Notifiche: creazione custom** | Nuovo `POST /api/notifications` (solo admin, lista `ADMIN_EMAILS`) e `DELETE /api/notifications/:id` per rimuovere un annuncio sbagliato |
+| **Notifiche: schema** | `notifications` ha ora `kind` (`NEW_TRACKS`/`PIRATE_DAY`/`CUSTOM`), `title`, `meta`, `dedupeKey` e una **FK verso `users`** (prima `user_id` non era referenziata) |
 
 ### Ultimi interventi (sessione 2026-11-14/16)
 
@@ -173,6 +183,8 @@ vedono le stesse variabili:
 | `NODE_ENV` | `production` | pannello + `.env` |
 | `PIRATE_DAY_DIR` | `/home/<user>/radio.chaosroom.online/chaos-web-player/backend/private/audio/pirate-day` (assoluto) | pannello + `.env` |
 | `AUTH_RATE_LIMIT_MAX` | opzionale (default 5): quante richieste `/auth/*` ogni 15 min per IP | pannello (o `.env` in dev) |
+| `ADMIN_EMAILS` | email degli admin, separate da virgola (default vuoto = **nessuno**): abilita `POST /api/notifications` | pannello (o `.env` in dev) |
+| `NOTIFICATIONS_RATE_LIMIT_MAX` | opzionale (default 30): quante notifiche custom ogni ora per IP | pannello (o `.env` in dev) |
 
 Dopo aver cambiato una env var: `touch <application root>/tmp/restart.txt` e
 verifica con `curl -s https://radio.chaosroom.online/api/debug` →
@@ -183,11 +195,36 @@ verifica con `curl -s https://radio.chaosroom.online/api/debug` →
 Non si inseriscono più righe a mano: c'è lo **scanner** (cron ogni 5') e la
 pipeline del **Pirate Day**.
 
-1. **Libreria**: upload dei MP3 in `/home/<user>/radio.chaosroom.online/chaos-web-player/backend/private/audio/` → il cron `scan.js` legge i tag ID3, estrae le cover, calcola le waveform e popola `tracks`; i brani finiscono nella playlist `show-list`.
+1. **Libreria**: upload dei MP3 in `/home/<user>/radio.chaosroom.online/chaos-web-player/backend/private/audio/` → il cron `scan.js` legge i tag ID3, estrae le cover, calcola le waveform e popola `tracks`; i brani finiscono nella playlist `show-list`. Quando entrano brani nuovi nasce una **notifica broadcast "Nuovi brani in Show List"** (una per batch di scan).
 2. **Pirate Day**: upload dei MP3 dell'edizione in `private/audio/pirate-day/` → `npm run pirate-day:init` genera il `manifest.json` (curatore, descrizione, data) → il cron orario `pirate-day.js` pubblica l'edizione (playlist + items + notifica) e, alla scadenza, la ripulisce (file + righe).
 3. I brani dell'edizione Pirate Day **non sono preferitabili**: il server li espone con `favoriteable: false` e risponde **403** a `POST /api/favorites/:id`.
 
 Dettagli: `backend/README.md` (scanner) e `deploy/DEPLOY.md` → PARTE D (Pirate Day).
+
+## Notifiche
+
+La tabella "UPDATES" è uno **storico**: le notifiche non spariscono, una volta
+lette restano in lista in grigio (prima del passaggio non lette → in evidenza).
+
+**Da dove nascono**
+
+| Origine | Chi la crea | Note |
+|---|---|---|
+| Nuovi brani in show list | cron `scan.js` (ogni 5') | una notifica per batch di scan, con l'elenco dei brani |
+| Nuova edizione Pirate Day | cron `pirate-day.js` (ogni ora) | una notifica per edizione (idempotente) |
+| Notifica custom | `POST /api/notifications` | solo admin (`ADMIN_EMAILS`); broadcast o target |
+
+**Stato "letto"**: il solo fatto di **visitare la pagina notifiche** marca
+come lette tutte le notifiche visibili (`POST /api/notifications/read-all`).
+Non serve cliccare nessuna notifica.
+
+```bash
+# Creare una notifica custom (richiede il cookie di sessione di un admin)
+curl -X POST https://radio.chaosroom.online/api/notifications \
+  -H "Content-Type: application/json" \
+  -b "token=<JWT>" \
+  -d '{"title":"Palinsesto","body":"La puntata di venerdì inizia alle 22:30."}'
+```
 
 ## Trappole note (le "lesson learned" del deploy)
 

@@ -2,7 +2,7 @@
 // Setup: Router v7, AuthProvider (ProtectedRoute), AudioEngine singleton, Notifier.
 
 import { useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useAuthStore } from "./store/authStore";
 import { useNotificationsStore } from "./store/notificationsStore";
 import { useFavoritesStore } from "./store/favoritesStore";
@@ -169,13 +169,22 @@ function FavoritesMount({ children }: { children: React.ReactNode }) {
 function NotifierMount({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user);
   const fetchNotifications = useNotificationsStore((s) => s.fetch);
-  const location = useLocation();
 
   // Fetch iniziale al login
   useEffect(() => {
     if (user) {
-      fetchNotifications();
+      void fetchNotifications();
     }
+  }, [user, fetchNotifications]);
+
+  // Polling: ogni 60s si riverifica la prima pagina delle notifiche, così
+  // il badge aggiorna le nuove notifiche senza dover ricaricare la pagina.
+  useEffect(() => {
+    if (!user) return;
+    const id = window.setInterval(() => {
+      void fetchNotifications();
+    }, 60_000);
+    return () => window.clearInterval(id);
   }, [user, fetchNotifications]);
 
   // Refetch quando l'utente torna sull'app (visibility/focus)
@@ -183,7 +192,7 @@ function NotifierMount({ children }: { children: React.ReactNode }) {
     if (!user) return;
     const onVisible = () => {
       if (document.visibilityState === "visible") {
-        fetchNotifications();
+        void fetchNotifications();
       }
     };
     document.addEventListener("visibilitychange", onVisible);
@@ -192,7 +201,7 @@ function NotifierMount({ children }: { children: React.ReactNode }) {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
     };
-  }, [user, fetchNotifications, location.pathname]);
+  }, [user, fetchNotifications]);
 
   // Network status: toast quando si torna online o si va offline
   useEffect(() => {

@@ -15,6 +15,10 @@
 // Env vars:
 //   SMOKE_BASE_URL  - default: "http://localhost:3001"
 //   SMOKE_TIMEOUT   - default: 10000 (ms per ogni richiesta)
+//   SMOKE_ADMIN_EMAIL / SMOKE_ADMIN_PASSWORD - credenziali di un admin
+//     (la stessa email di ADMIN_EMAILS): se impostate, il test verifica
+//     anche la creazione di una notifica custom. Se assenti, quel caso
+//     viene saltato.
 //
 // NON richiede Prisma/client Prisma: tocca solo l'API pubblica.
 
@@ -24,6 +28,8 @@ loadEnv();
 
 const BASE_URL = process.env.SMOKE_BASE_URL ?? "http://localhost:3001";
 const TIMEOUT_MS = Math.max(1000, parseInt(process.env.SMOKE_TIMEOUT ?? "10000", 10));
+const SMOKE_ADMIN_EMAIL = process.env.SMOKE_ADMIN_EMAIL ?? "";
+const SMOKE_ADMIN_PASSWORD = process.env.SMOKE_ADMIN_PASSWORD ?? "";
 
 const results = [];
 let stepCounter = 0;
@@ -471,20 +477,50 @@ async function run() {
     );
   }
 
-  // ── 20. GET /api/notifications → 200 + array ──────────────────────
+  // ── 20. GET /api/notifications → 200 + storico paginato ───────────
   let firstNotificationId;
   {
     const r = await http("GET", "/api/notifications", { jar });
-    const isArray = Array.isArray(r.json);
-    if (isArray && r.json.length > 0) firstNotificationId = r.json[0].id;
+    const okShape =
+      r.status === 200 &&
+      Array.isArray(r.json?.items) &&
+      typeof r.json?.total === "number" &&
+      typeof r.json?.unreadCount === "number";
+    if (okShape && r.json.items.length > 0) firstNotificationId = r.json.items[0].id;
     record(
-      "GET /api/notifications → 200 + array",
-      r.status === 200 && isArray,
-      `status=${r.status}, count=${isArray ? r.json.length : "n/a"}`,
+      "GET /api/notifications → 200 + {items, total, unreadCount}",
+      okShape,
+      `status=${r.status}, count=${okShape ? r.json.items.length : "n/a"}`,
     );
   }
 
-  // ── 21. POST /api/notifications/:id/read (solo se c'è almeno una) ─
+  // ── 21. POST /api/notifications/read-all → 204 ────────────────────
+  {
+    const r = await http("POST", "/api/notifications/read-all", { jar });
+    record(
+      "POST /api/notifications/read-all → 204",
+      r.status === 204,
+      `status=${r.status}`,
+    );
+
+    // ── 22. Dopo read-all: tutto letto, MA lo storico resta ───────
+    const r2 = await http("GET", "/api/notifications", { jar });
+    const items = Array.isArray(r2.json?.items) ? r2.json.items : [];
+    const allRead = items.every((n) => n.read === true);
+    record(
+      "GET /api/notifications → tutte lette dopo read-all",
+      r2.status === 200 && allRead && (r2.json?.unreadCount ?? -1) === 0,
+      `status=${r2.status}, unreadCount=${r2.json?.unreadCount}, items=${items.length}`,
+    );
+    record(
+      "GET /api/notifications → lo storico non sparisce",
+      r2.status === 200 &&
+        items.length === Math.min(r2.json?.total ?? 0, r2.json?.limit ?? 20),
+      `status=${r2.status}, items=${items.length}, total=${r2.json?.total}`,
+    );
+  }
+
+  // ── 23. POST /api/notifications/:id/read (se c'è almeno una) ──────
   if (firstNotificationId !== undefined) {
     const r = await http("POST", `/api/notifications/${firstNotificationId}/read`, { jar });
     record(
@@ -492,22 +528,102 @@ async function run() {
       r.status === 204,
       `status=${r.status}`,
     );
+  } else {
+    skip("Mark notification read", "no notifications");
+  }
 
-    // ── 22. GET /api/notifications riflette lo stato letto ──────────
-    const r2 = await http("GET", "/api/notifications", { jar });
-    const all = Array.isArray(r2.json) ? r2.json : [];
-    const found = all.find((n) => n.id === firstNotificationId);
-    // Le notifiche BROADCAST già lette spariscono dalla lista (l'endpoint
-    // mostra solo le non lette): "letto" vuol dire quindi "assente dalla
-    // lista" OPPURE "presente con read=true".
-    const isRead = found ? found.read === true : true;
+  // ── 24. POST /api/notifications senza sessione → 401 ──────────────
+  {
+    const r = await http("POST", "/api/notifications", {
+      body: { body: "notifica di test" },
+    });
     record(
-      "GET /api/notifications → la notifica marcata non risulta più non letta",
-      r2.status === 200 && isRead,
-      `status=${r2.status}, found=${found ? "yes" : "no (broadcast letta: rimossa dalla lista)"}`,
+      "POST /api/notifications (senza auth) → 401",
+      r.status === 401,
+      `status=${r.status}`,
+    );
+  }
+
+  // ── 25. POST /api/notifications come utente non admin → 403 ──────
+  {
+    const r = await http("POST", "/api/notifications", {
+      body: { body: "notifica di test" },
+      jar,
+    });
+    record(
+      "POST /api/notifications (non admin) → 403",
+      r.status === 403,
+      `status=${r.status}`,
+    );
+  }
+
+  // ── 26. DELETE /api/notifications/:id come non admin → 403 ───────
+  if (firstNotificationId !== undefined) {
+    const r = await http("DELETE", `/api/notifications/${firstNotificationId}`, { jar });
+    record(
+      "DELETE /api/notifications/:id (non admin) → 403",
+      r.status === 403,
+      `status=${r.status}`,
     );
   } else {
-    skip("Mark notification read + verify", "no notifications");
+    skip("DELETE notification (non admin) → 403", "no notifications");
+  }
+
+  // ── 27. Creazione notifica custom come admin → 201 (+ cleanup) ───
+  // Richiede SMOKE_ADMIN_EMAIL / SMOKE_ADMIN_PASSWORD: senza credenziali
+  // admin il caso viene saltato (non è un fallimento).
+  if (SMOKE_ADMIN_EMAIL && SMOKE_ADMIN_PASSWORD) {
+    const adminJar = makeJar();
+    const login = await http("POST", "/api/auth/login", {
+      body: { email: SMOKE_ADMIN_EMAIL, password: SMOKE_ADMIN_PASSWORD },
+      jar: adminJar,
+    });
+
+    if (login.status !== 200) {
+      skip("Notifica custom (admin) → 201", `login admin fallito (status=${login.status})`);
+    } else {
+      const body = `Notifica di smoke test ${Date.now()}`;
+      const created = await http("POST", "/api/notifications", {
+        body: { title: "Smoke", body },
+        jar: adminJar,
+      });
+      const createdOk =
+        created.status === 201 &&
+        created.json?.body === body &&
+        created.json?.kind === "CUSTOM";
+      record(
+        "POST /api/notifications (admin) → 201 + {id, kind:CUSTOM}",
+        createdOk,
+        `status=${created.status}`,
+      );
+
+      if (createdOk) {
+        // La notifica broadcast deve comparire nello storico utente.
+        const list = await http("GET", "/api/notifications", { jar });
+        const items = Array.isArray(list.json?.items) ? list.json.items : [];
+        const found = items.some((n) => n.id === created.json.id);
+        record(
+          "GET /api/notifications → la notifica custom è visibile",
+          list.status === 200 && found,
+          `status=${list.status}, found=${found ? "yes" : "no"}`,
+        );
+
+        // Cleanup: la notifica di test non deve restare in produzione.
+        const del = await http("DELETE", `/api/notifications/${created.json.id}`, {
+          jar: adminJar,
+        });
+        record(
+          `DELETE /api/notifications/${created.json.id} (admin) → 204`,
+          del.status === 204,
+          `status=${del.status}`,
+        );
+      }
+    }
+  } else {
+    skip(
+      "Notifica custom (admin) → 201",
+      "SMOKE_ADMIN_EMAIL / SMOKE_ADMIN_PASSWORD non impostate",
+    );
   }
 
   // ── 23. Rate limit headers presenti su /login (sanity) ────────────

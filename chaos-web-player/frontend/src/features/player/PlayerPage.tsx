@@ -50,7 +50,7 @@ function useFallbackBars(count = 64) {
 
 export default function PlayerPage() {
   const navigate = useNavigate();
-  const unread = useNotificationsStore((s) => s.unreadCount());
+  const unread = useNotificationsStore((s) => s.unreadCount);
   const onTabChange = (k: TabKey) => navigate(`/${k}`);
 
   // Selettori invece di `usePlayerStore()` per intero: senza selettore

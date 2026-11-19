@@ -24,7 +24,7 @@ import type { ShowListResponse, Track } from "../../types/api";
 
 export default function FavoritesPage() {
   const navigate = useNavigate();
-  const unread = useNotificationsStore((s) => s.unreadCount());
+  const unread = useNotificationsStore((s) => s.unreadCount);
   const onTabChange = (k: TabKey) => navigate(`/${k}`);
 
   const favorites = useFavoritesStore((s) => s.items);

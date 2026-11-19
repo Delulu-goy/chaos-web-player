@@ -135,22 +135,32 @@ async function seedNotifications(prisma) {
   const notifications = [
     {
       userId: null,
+      kind: "CUSTOM",
+      title: "Chaos Radio è online",
       body: "**Chaos Radio is live.** Welcome to the new season. New shows every Friday at 22:00 CET.",
     },
     {
       userId: null,
+      kind: "CUSTOM",
+      title: "Aggiornamento palinsesto",
       body: "Schedule update: this week's show starts 30 minutes later than usual. Stay tuned.",
     },
     {
       userId: null,
+      kind: "CUSTOM",
+      title: "Pirate Day",
       body: "Pirate Day #23 is on the air — 24 hours of unfiltered transmissions.",
     },
     {
       userId: null,
+      kind: "CUSTOM",
+      title: "Playlist curata",
       body: "Reminder: **the curated playlist is now available** for offline listening.",
     },
     {
       userId: null,
+      kind: "CUSTOM",
+      title: "A presto",
       body: "See you next week.",
     },
   ];

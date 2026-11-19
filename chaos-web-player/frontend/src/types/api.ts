@@ -65,11 +65,36 @@ export interface PirateDayResponse {
   items: Track[];
 }
 
+/**
+ * Origine della notifica (corrisponde all'enum `NotificationKind` del backend).
+ * - NEW_TRACKS: nuovi brani entrati nella show list (cron scan.js)
+ * - PIRATE_DAY: nuova edizione Pirate Day (cron pirate-day.js)
+ * - CUSTOM: creata a mano via POST /api/notifications
+ */
+export type NotificationKind = "NEW_TRACKS" | "PIRATE_DAY" | "CUSTOM";
+
 export interface NotificationItem {
   id: ID;
+  /** Intestazione sintetica (opzionale). */
+  title: string | null;
   body: string;
+  kind: NotificationKind;
   createdAt: string;
+  /** True se l'utente ha già visto la notifica (visita della pagina). */
   read: boolean;
+  /** Quando l'utente l'ha vista (null se non letta). */
+  readAt: string | null;
+  /** Dati strutturati (brani, edizione, slug…): forma libera. */
+  meta: unknown | null;
+}
+
+/** Risposta di GET /api/notifications (storico paginato). */
+export interface NotificationsResponse {
+  items: NotificationItem[];
+  total: number;
+  page: number;
+  limit: number;
+  unreadCount: number;
 }
 
 export type ApiErrorCode =

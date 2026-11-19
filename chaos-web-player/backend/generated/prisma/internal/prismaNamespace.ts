@@ -988,7 +988,11 @@ export type PlaylistItemScalarFieldEnum = (typeof PlaylistItemScalarFieldEnum)[k
 export const NotificationScalarFieldEnum = {
   id: 'id',
   userId: 'userId',
+  kind: 'kind',
+  title: 'title',
   body: 'body',
+  meta: 'meta',
+  dedupeKey: 'dedupeKey',
   createdAt: 'createdAt'
 } as const
 
@@ -1077,7 +1081,9 @@ export type PlaylistOrderByRelevanceFieldEnum = (typeof PlaylistOrderByRelevance
 
 
 export const NotificationOrderByRelevanceFieldEnum = {
-  body: 'body'
+  title: 'title',
+  body: 'body',
+  dedupeKey: 'dedupeKey'
 } as const
 
 export type NotificationOrderByRelevanceFieldEnum = (typeof NotificationOrderByRelevanceFieldEnum)[keyof typeof NotificationOrderByRelevanceFieldEnum]
@@ -1128,6 +1134,13 @@ export type EnumQueryModeFieldRefInput<$PrismaModel> = FieldRefInputType<$Prisma
  * Reference to a field of type 'PlaylistKind'
  */
 export type EnumPlaylistKindFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'PlaylistKind'>
+    
+
+
+/**
+ * Reference to a field of type 'NotificationKind'
+ */
+export type EnumNotificationKindFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'NotificationKind'>
     
 
 

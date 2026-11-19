@@ -67,6 +67,16 @@ npm run scan
    `PIRATE_DAY_DIR`**, ordinati per `addedAt desc` (la UX della show list non
    cambia). I brani del Pirate Day restano nella tabella `tracks` (servono per
    stream/cover/waveform) ma non compaiono nella show list.
+8. **Crea la notifica broadcast "Nuovi brani in Show List"** quando entrano
+   brani nuovi: confronta i file trovati con quelli già in `tracks` (snapshot
+   fatto **prima** della scansione) e, per i file davvero creati (verificati
+   sul DB, così i tag corrotti non contano) e **fuori** `PIRATE_DAY_DIR`,
+   crea **una notifica per batch** con l'elenco dei brani. Un giro senza
+   novità non genera nulla.
+
+> La notifica usa `src/lib/notifications.js` (helper condiviso con l'API):
+> `notifyNewTracks()`. I brani del Pirate Day sono esclusi perché hanno già
+> la notifica dedicata creata da `pirate-day.js`.
 
 > L'esclusione usa `path.relative` (`isPathInside` in `src/lib/paths.js`), non
 > un `startsWith` grezzo: `/private/audio/pirate-day-2` non è dentro
@@ -150,7 +160,8 @@ invece rispettato.
      (items, curatore, descrizione) **senza spostare la finestra**;
    - **(c)** esiste ma è scaduta → **riapre** la finestra da `now`;
 5. ricostruisce i `playlist_items` con `position` = indice del manifest;
-6. crea la notifica broadcast "Pirate Day #N is on the air" (`userId: null`);
+6. crea la notifica broadcast "Pirate Day #N is on the air" (`kind = PIRATE_DAY`,
+   idempotente per edizione tramite `dedupeKey = "pirate-day:<N>"`);
 7. log `[pirate-day] ✓ #N pubblicato (endsAt=…)`.
 
 **Fase B — cleanup** (idempotente, retry-safe):
@@ -356,8 +367,10 @@ SMOKE_BASE_URL=https://radio.chaosroom.online npm run test:smoke
 | 13-17 | Add, list, idempotenza, delete favorite | CRUD |
 | 18 | Show-list playlist → 200 + struttura | Contratto |
 | 19 | Pirate-day → 200|404 | Contratto |
-| 20 | Notifications → 200 + array | Contratto |
-| 21-22 | Mark read + verifica stato | CRUD |
+| 20 | Notifications → 200 + `{items, total, unreadCount}` | Contratto |
+| 21-22 | Read-all + storico che non sparisce | CRUD |
+| 23 | Mark read singola notifica → 204 | CRUD |
+| 24-26 | Creazione notifica custom: 401 senza auth, 403 non admin, 201 admin (se `SMOKE_ADMIN_EMAIL`/`SMOKE_ADMIN_PASSWORD` sono impostate) + DELETE admin | Sicurezza |
 | 23 | Login input malformato → 4xx | Sicurezza |
 | 24 | Logout → 204 + clear-cookie | Auth |
 | 25 | Re-login con stesse credenziali → 200 | Auth |

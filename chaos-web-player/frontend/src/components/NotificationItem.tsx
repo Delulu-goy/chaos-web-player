@@ -1,29 +1,35 @@
 // Chaos Radio — NotificationItem
-// Riga con data, pallino letto/non-letto, body Lorem.
+// Riga di una notifica: data e ora, pallino letto/non-letto, titolo e body.
+//
+// La notifica NON è cliccabile: lo stato "letto" dipende solo dalla
+// visita alla pagina notifiche (vedi `markAllRead` nello store).
 
-import { formatDate } from "../lib/format";
-import type { NotificationItem as NotificationItemType } from "../types/api";
+import { formatDateTime } from "../lib/format";
+import { renderRichText } from "../lib/richText";
+import type {
+  NotificationItem as NotificationItemType,
+  NotificationKind,
+} from "../types/api";
+
+/** Etichetta leggibile per l'origine della notifica. */
+const KIND_LABEL: Record<NotificationKind, string | null> = {
+  NEW_TRACKS: "NUOVI BRANI",
+  PIRATE_DAY: "PIRATE DAY",
+  CUSTOM: null,
+};
 
 interface NotificationItemProps {
   notification: NotificationItemType;
-  onRead?: (id: number) => void;
 }
 
-export default function NotificationItem({
-  notification,
-  onRead,
-}: NotificationItemProps) {
-  const { id, body, createdAt, read } = notification;
-
-  const handleClick = () => {
-    if (!read) onRead?.(id);
-  };
+export default function NotificationItem({ notification }: NotificationItemProps) {
+  const { title, body, kind, createdAt, read } = notification;
+  const kindLabel = KIND_LABEL[kind] ?? null;
 
   return (
-    <button
-      onClick={handleClick}
-      disabled={read}
-      className="block w-full border-b border-white/10 py-6 text-left transition-opacity disabled:opacity-60 hover:enabled:opacity-80"
+    <article
+      className="block w-full border-b border-white/10 py-6 text-left"
+      style={{ opacity: read ? 0.6 : 1 }}
     >
       <div
         className="flex items-center gap-3 text-sm font-bold"
@@ -35,14 +41,32 @@ export default function NotificationItem({
             backgroundColor: read ? "rgba(255,255,255,0.4)" : "#FF5A1F",
           }}
         />
-        {formatDate(createdAt)}
+        {formatDateTime(createdAt)}
+        {kindLabel && (
+          <span
+            className="border border-current px-2 py-0.5 text-[10px] tracking-widest"
+            style={{ color: read ? "rgba(255,255,255,0.4)" : "#FF5A1F" }}
+          >
+            {kindLabel}
+          </span>
+        )}
       </div>
+
+      {title && (
+        <h2
+          className="mt-3 text-base font-bold"
+          style={{ color: read ? "rgba(255,255,255,0.4)" : "#ffffff" }}
+        >
+          {title}
+        </h2>
+      )}
+
       <p
         className="mt-3 leading-relaxed"
         style={{ color: read ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.7)" }}
       >
-        {body}
+        {renderRichText(body)}
       </p>
-    </button>
+    </article>
   );
 }
