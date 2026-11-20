@@ -95,6 +95,20 @@ export default function PirateDayPage() {
     navigate("/player");
   };
 
+  // Righe della descrizione.
+  //
+  // Nel riferimento grafico la descrizione è un paragrafo giustificato:
+  // ogni riga (tranne l'ultima) è tirata a filo destro. Con
+  // `text-align: justify` il browser NON giustifica la riga che precede un
+  // a capo forzato, quindi ogni riga viene resa come blocco a sé con
+  // `text-align-last: justify` (l'ultima resta allineata a sinistra).
+  // Se la descrizione non ha a capi, resta un solo blocco e si comporta
+  // come un paragrafo giustificato normale.
+  const descriptionLines = (data?.description ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
   // ─── Loading ────────────────────────────────────────────────────────
   if (!notFound && !error && !data) {
     return (
@@ -199,9 +213,22 @@ export default function PirateDayPage() {
 
       {/* Description */}
       {data.description && (
-        <p className="mt-6 whitespace-pre-line text-justify text-sm leading-[0.95rem] text-white/80">
-          {renderRichText(data.description)}
-        </p>
+        <div className="mt-6 whitespace-pre-wrap text-[13px] leading-[0.95rem] text-white/80">
+          {descriptionLines.map((line, i) => (
+            <span
+              key={i}
+              className={
+                descriptionLines.length === 1
+                  ? "block text-justify"
+                  : i < descriptionLines.length - 1
+                    ? "block text-justify [text-align-last:justify]"
+                    : "block"
+              }
+            >
+              {renderRichText(line)}
+            </span>
+          ))}
+        </div>
       )}
 
       {/* Curator */}
