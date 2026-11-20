@@ -218,13 +218,22 @@ lette restano in lista in grigio (prima del passaggio non lette → in evidenza)
 come lette tutte le notifiche visibili (`POST /api/notifications/read-all`).
 Non serve cliccare nessuna notifica.
 
+**Scrivere una notifica custom** (solo admin, lista `ADMIN_EMAILS`):
+
 ```bash
-# Creare una notifica custom (richiede il cookie di sessione di un admin)
+# 1) login come admin -> il cookie di sessione sta nella risposta
+curl -i -X POST https://radio.chaosroom.online/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"<admin@email>","password":"..."}'
+# 2) crea la notifica (body obbligatorio; userId = null -> broadcast)
 curl -X POST https://radio.chaosroom.online/api/notifications \
   -H "Content-Type: application/json" \
   -b "token=<JWT>" \
   -d '{"title":"Palinsesto","body":"La puntata di venerdì inizia alle 22:30."}'
 ```
+
+> Guida completa (payload, codici di errore, esempi, test, troubleshooting):
+> [`docs/notifications.md`](docs/notifications.md).
 
 ## Trappole note (le "lesson learned" del deploy)
 

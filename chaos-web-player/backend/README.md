@@ -190,6 +190,9 @@ caratteri), `userId` omesso = broadcast. Sono ammessi solo gli admin
 (elencati in `ADMIN_EMAILS`): se la variabile non è impostata l'endpoint
 è chiuso a tutti. `dedupeKey` rende la creazione idempotente.
 
+> **Riferimento completo** (payload, codici di errore, esempi, test,
+> troubleshooting): [`docs/notifications.md`](../docs/notifications.md).
+
 ### Auth flow
 
 ```

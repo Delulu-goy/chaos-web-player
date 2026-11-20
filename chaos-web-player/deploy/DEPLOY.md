@@ -217,9 +217,29 @@ ADMIN_EMAILS=admin@chaosroom.online
 > ℹ️ `ADMIN_EMAILS` va messo **anche** nel pannello (Setup Node.js App →
 > Environment variables): l'app Express non carica `.env`.
 
-## STEP 7b — Applica migration al DB (via phpMyAdmin)
+## STEP 7b — Applica le migration al DB
 
-> SSH disabilitato su Stellar shared, niente terminale. Il client Prisma è già committato in `backend/generated/prisma/`, ma serve comunque applicare la migration al DB.
+> Il client Prisma è già committato in `backend/generated/prisma/`, ma serve
+> comunque applicare le migration al DB.
+
+**Opzione A (consigliata) — `apply-migrations.mjs` via SSH**
+
+Su Stellar il motore WASM di Prisma 7 non si scarica, quindi
+`prisma migrate deploy` non funziona. Le migration sono però SQL puro e si
+possono applicare con il driver `mariadb` già presente nelle dipendenze:
+
+```bash
+ssh -i ~/.ssh/id_ed25519 -p 21098 chaouaza@198.177.120.31
+cd /home/chaouaza/radio.chaosroom.online/chaos-web-player/backend
+/home/chaouaza/nodevenv/radio.chaosroom.online/chaos-web-player/backend/22/bin/node \
+  --env-file=.env scripts/apply-migrations.mjs
+```
+
+Lo script è **idempotente** (le parti già applicate vengono saltate) e tiene
+traccia delle migration applicate in `schema_migrations`. Dettagli:
+`backend/scripts/README.md` → *apply-migrations.mjs*.
+
+**Opzione B — import da phpMyAdmin (senza SSH)**
 
 1. cPanel → **Databases** → **phpMyAdmin**
 2. Click sulla tabella `chaouaza_chaos_radio` (o `chaos_radio` se non hai prefisso) nella sidebar sinistra
@@ -228,9 +248,9 @@ ADMIN_EMAILS=admin@chaosroom.online
 5. Click **Go** in fondo alla pagina
 6. Verifica che le 7 tabelle siano presenti nella sidebar: `users`, `tracks`, `favorites`, `playlists`, `playlist_items`, `notifications`, `notification_reads`
 
-> ⚠️ **Ogni nuova migration va importata a mano, una per una, in ordine.**
-> Se il repo contiene più cartelle in `prisma/migrations/`, importale tutte
-> dalla più vecchia alla più recente. Al momento:
+> ⚠️ **Ogni nuova migration va applicata a mano, una per una, in ordine.**
+> Con l'Opzione A (`apply-migrations.mjs`) è automatico; con l'Opzione B
+> (phpMyAdmin) va importata dalla più vecchia alla più recente. Al momento:
 > - `20261006105522_init` (schema iniziale)
 > - `20261119173000_notification_history_kind` (notifiche: colonne `kind`,
 >   `title`, `meta`, `dedupe_key`, indice `user_id+created_at`, FK
@@ -242,7 +262,14 @@ ADMIN_EMAILS=admin@chaosroom.online
 
 ## STEP 8 — Setup Node.js App (Application Manager)
 
-> ⚠️ **Niente terminale su Stellar shared** — SSH è disabilitato. Abbiamo rimosso `postinstall: prisma generate` e committato il client Prisma generato (`backend/generated/prisma/`) direttamente nel repo, così non serve `prisma generate`. Per la migration usiamo **phpMyAdmin** (vedi STEP 9).
+> ℹ️ **SSH è disponibile** su questo account (porta 21098: cPanel → SSH Access →
+> Access Details). Da lì si lanciano gli script e si applicano le migration con
+> `apply-migrations.mjs` (STEP 7b, Opzione A). Il pannello "Run NPM Script"
+> invece va evitato: quel runner avvia node con limiti LVE più stretti e Node
+> non riesce ad allocare la WebAssembly del type-stripping. Abbiamo comunque
+> rimosso `postinstall: prisma generate` e committato il client Prisma
+> generato (`backend/generated/prisma/`) nel repo, così la pipeline non ha
+> bisogno di `prisma generate`.
 
 1. cPanel → **Software** → **Setup Node.js App**
 2. Click **Create Application**:

@@ -11,6 +11,7 @@ Tutti leggono le credenziali DB da `backend/.env` (`DB_HOST`, `DB_PORT`, `DB_USE
 | `pirate-day-init.js` | Genera/aggiorna il `manifest.json` della prossima edizione | Manuale (una volta a settimana) |
 | `seed.js` | Popola DB con admin + playlist show-list + notifiche demo | Una tantum + dopo reset |
 | `smoke-test.mjs` | Verifica E2E di tutti gli endpoint | Pre-deploy, debug |
+| `apply-migrations.mjs` | Applica le migration SQL al DB (senza il motore Prisma, per Stellar) | Dopo ogni deploy con migration |
 
 ## Helpers condivisi (`_shared.mjs`)
 
@@ -340,6 +341,55 @@ npm run seed
 - `SEED_ADMIN_PASSWORD` deve essere almeno 8 caratteri (validato lato script).
 - Non committare `SEED_ADMIN_PASSWORD` in `.env` in produzione: meglio passarla come env var al primo seed, poi rimuoverla dal pannello cPanel.
 
+## apply-migrations.mjs — Applica le migration SQL
+
+```bash
+node --env-file=.env --experimental-strip-types scripts/apply-migrations.mjs
+
+# dry-run: elenca cosa verrebbe applicato senza toccare il DB
+node --env-file=.env --experimental-strip-types scripts/apply-migrations.mjs --dry-run
+```
+
+Su Stellar (Namecheap shared) `prisma migrate deploy` **non funziona**: il
+binario WASM del query engine di Prisma 7 non si scarica su quell'hosting
+(vedi `deploy/DEPLOY.md` → STEP 7b). Questo script applica le stesse
+migration SQL con il driver `mariadb`, che è già una dipendenza di
+produzione (è quello che usa il client Prisma via driver adapter).
+
+- Legge `prisma/migrations/*/migration.sql` in ordine cronologico.
+- Tiene traccia delle migration applicate in `schema_migrations`; se il DB ha
+  già la tabella `_prisma_migrations` di Prisma, anche quella viene letta (le
+  migration che Prisma considera applicate non vengono riapplicate).
+- È **idempotente**: le istruzioni "già presenti" (colonna, indice, FK
+  duplicati) vengono saltate con un avviso → si può rieseguire senza effetti
+  collaterali.
+- In locale, con un DB raggiungibile, si può continuare a usare
+  `npx prisma migrate dev` (fa anche il diff dello schema).
+
+Output tipico:
+
+```
+[migrate] 2 migration nel repo, 0 già applicate, 2 da applicare
+[migrate] applico 20261006105522_init…
+[migrate]   ↷ già presente, salto: CREATE TABLE `users` …
+[migrate] ✓ 20261006105522_init applicata
+[migrate] applico 20261119173000_notification_history_kind…
+[migrate] ✓ 20261119173000_notification_history_kind applicata
+[migrate] ✓ done
+```
+
+In produzione (SSH):
+
+```bash
+cd /home/chaouaza/radio.chaosroom.online/chaos-web-player/backend
+/home/chaouaza/nodevenv/radio.chaosroom.online/chaos-web-player/backend/22/bin/node \
+  --env-file=.env scripts/apply-migrations.mjs
+```
+
+> La pipeline di deploy (`.cpanel.yml`) prova comunque `npx prisma migrate
+> deploy`: su Stellar fallisce e prosegue (`|| echo ...`). Le migration vanno
+> quindi applicate a mano con questo script (o via phpMyAdmin).
+
 ## smoke-test.mjs — Verifica E2E
 
 ```bash
@@ -350,7 +400,7 @@ npm run test:smoke
 SMOKE_BASE_URL=https://radio.chaosroom.online npm run test:smoke
 ```
 
-29 test base + 5 check sul Pirate Day che coprono gli invarianti I1/I3 del Pirate Day (i brani dell'edizione non sono preferitabili) e il contratto degli endpoint:
+I check coprono il contratto di tutti gli endpoint, gli invarianti I1/I3 del Pirate Day (i brani dell'edizione non sono preferitabili) e le notifiche (storico, `read-all`, creazione custom riservata agli admin):
 
 | # | Check | Categoria |
 |---|---|---|
@@ -368,20 +418,22 @@ SMOKE_BASE_URL=https://radio.chaosroom.online npm run test:smoke
 | 18 | Show-list playlist → 200 + struttura | Contratto |
 | 19 | Pirate-day → 200|404 | Contratto |
 | 20 | Notifications → 200 + `{items, total, unreadCount}` | Contratto |
-| 21-22 | Read-all + storico che non sparisce | CRUD |
+| 21-22 | Read-all → 204, tutte lette, **lo storico non sparisce** | CRUD |
 | 23 | Mark read singola notifica → 204 | CRUD |
-| 24-26 | Creazione notifica custom: 401 senza auth, 403 non admin, 201 admin (se `SMOKE_ADMIN_EMAIL`/`SMOKE_ADMIN_PASSWORD` sono impostate) + DELETE admin | Sicurezza |
-| 23 | Login input malformato → 4xx | Sicurezza |
-| 24 | Logout → 204 + clear-cookie | Auth |
-| 25 | Re-login con stesse credenziali → 200 | Auth |
-| 26 | Pirate-day → shape `{title, curator, items[], endsAt}` | Contratto |
-| 27 | Show list ∩ track(playlist `PIRATE_DAY`) = ∅ | Contratto |
-| 28 | Item pirate day → `favoriteable = false` | Contratto |
-| 29 | Item show list → `favoriteable ≠ false` | Contratto |
-| 30 | `POST /api/favorites/<track pirate day>` → 403 | Sicurezza |
-| 31 | `GET /api/favorites` senza track pirate day | Contratto |
+| 24 | Notifica custom senza sessione → 401 | Sicurezza |
+| 25 | Notifica custom come non admin → 403 | Sicurezza |
+| 26 | DELETE notifica come non admin → 403 | Sicurezza |
+| 27 | Notifica custom come admin → 201 + visibile + DELETE (se `SMOKE_ADMIN_EMAIL`/`SMOKE_ADMIN_PASSWORD` sono impostate) | CRUD |
+| 28 | Login input malformato → 4xx | Sicurezza |
+| 29 | Logout → 204 + clear-cookie, re-login con stesse credenziali → 200 | Auth |
+| 30 | Pirate-day → shape `{title, curator, items[], endsAt}` | Contratto |
+| 31 | Show list ∩ track(playlist `PIRATE_DAY`) = ∅ | Contratto |
+| 32 | Item pirate day → `favoriteable = false` | Contratto |
+| 33 | Item show list → `favoriteable ≠ false` | Contratto |
+| 34 | `POST /api/favorites/<track pirate day>` → 403 | Sicurezza |
+| 35 | `GET /api/favorites` senza track pirate day | Contratto |
 
-I check 26-31 sono **saltati** (non falliti) quando non c'è un'edizione
+I check 30-35 sono **saltati** (non falliti) quando non c'è un'edizione
 Pirate Day attiva: il `○` nel log indica uno skip, e il riepilogo li conta
 separatamente (`N skipped`). Uno skip non fa uscire con codice 1.
 
