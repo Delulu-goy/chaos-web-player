@@ -280,7 +280,7 @@ function PlayerView({
       {/* Title row */}
       <div className="mt-6 flex items-start justify-between gap-4 border-t border-white/10 pt-5">
         <div className="min-w-0">
-          <h1 className="truncate text-2xl font-bold sm:text-3xl">
+          <h1 className="truncate text-2xl sm:text-3xl">
             {track.title}
           </h1>
           <p className="mt-1 truncate text-lg" style={{ color: "#FF5A1F" }}>

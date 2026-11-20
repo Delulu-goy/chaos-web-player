@@ -66,7 +66,7 @@ export default function CuratorCard({ curator }: CuratorCardProps) {
 
         {/* Name + role */}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-lg font-bold">{curator.name}</p>
+          <p className="truncate text-lg">{curator.name}</p>
           {curator.role && (
             <p className="truncate text-sm text-white/60">{curator.role}</p>
           )}

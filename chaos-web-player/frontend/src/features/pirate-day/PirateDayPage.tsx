@@ -103,7 +103,7 @@ export default function PirateDayPage() {
         onTabChange={onTabChange}
         hasNotifications={unread > 0}
       >
-        <h1 className="text-2xl font-bold">PIRATE DAY</h1>
+        <h1 className="text-2xl">PIRATE DAY</h1>
         <LoadingView />
       </AppShell>
     );
@@ -116,7 +116,7 @@ export default function PirateDayPage() {
         onTabChange={onTabChange}
         hasNotifications={unread > 0}
       >
-        <h1 className="text-2xl font-bold">PIRATE DAY</h1>
+        <h1 className="text-2xl">PIRATE DAY</h1>
         <div className="mt-8">
           <EmptyState
             variant="error"
@@ -137,7 +137,7 @@ export default function PirateDayPage() {
         onTabChange={onTabChange}
         hasNotifications={unread > 0}
       >
-        <h1 className="text-2xl font-bold">PIRATE DAY</h1>
+        <h1 className="text-2xl">PIRATE DAY</h1>
         <div className="mt-8">
           <EmptyState
             variant="info"
@@ -173,7 +173,7 @@ export default function PirateDayPage() {
     >
       {/* Header: titolo + countdown + barra */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-        <h1 className="text-2xl font-bold">{data.title}</h1>
+        <h1 className="text-2xl">{data.title}</h1>
         <div className="flex shrink-0 items-center gap-3 sm:flex-col sm:items-end sm:gap-1">
           {countdown && (
             <span className="font-mono text-sm text-white/60">{countdown}</span>
@@ -199,7 +199,7 @@ export default function PirateDayPage() {
 
       {/* Description */}
       {data.description && (
-        <p className="mt-6 whitespace-pre-line leading-relaxed text-white/80">
+        <p className="mt-6 whitespace-pre-line text-justify leading-relaxed text-white/80">
           {renderRichText(data.description)}
         </p>
       )}

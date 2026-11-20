@@ -69,7 +69,7 @@ export default function FavoritesPage() {
       onTabChange={onTabChange}
       hasNotifications={unread > 0}
     >
-      <h1 className="text-2xl font-bold">USER FAVORITES</h1>
+      <h1 className="text-2xl">USER FAVORITES</h1>
 
       {isLoading && favorites.length === 0 && <LoadingView />}
 

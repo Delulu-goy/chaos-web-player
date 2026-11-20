@@ -32,7 +32,7 @@ export default function NotificationItem({ notification }: NotificationItemProps
       style={{ opacity: read ? 0.6 : 1 }}
     >
       <div
-        className="flex items-center gap-3 text-sm font-bold"
+        className="flex items-center gap-3 text-sm"
         style={{ color: read ? "rgba(255,255,255,0.4)" : "#FF5A1F" }}
       >
         <span
@@ -54,7 +54,7 @@ export default function NotificationItem({ notification }: NotificationItemProps
 
       {title && (
         <h2
-          className="mt-3 text-base font-bold"
+          className="mt-3 text-base"
           style={{ color: read ? "rgba(255,255,255,0.4)" : "#ffffff" }}
         >
           {title}

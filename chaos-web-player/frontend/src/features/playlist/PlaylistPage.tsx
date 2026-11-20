@@ -60,7 +60,7 @@ export default function PlaylistPage() {
       onTabChange={onTabChange}
       hasNotifications={unread > 0}
     >
-      <h1 className="text-2xl font-bold">SHOW LIST</h1>
+      <h1 className="text-2xl">SHOW LIST</h1>
 
       {items === null && !error && <LoadingView />}
 

@@ -94,7 +94,7 @@ export default function TrackListItem({
 
       {/* Title / Artist / Year */}
       <div className="min-w-0 flex-1">
-        <p className="truncate font-bold">{track.title}</p>
+        <p className="truncate">{track.title}</p>
         <p className="truncate" style={{ color: "#FF5A1F" }}>
           {track.artist}
         </p>
