@@ -199,7 +199,7 @@ export default function PirateDayPage() {
 
       {/* Description */}
       {data.description && (
-        <p className="mt-6 whitespace-pre-line text-justify text-sm text-white/80">
+        <p className="mt-6 whitespace-pre-line text-justify text-sm leading-[0.95rem] text-white/80">
           {renderRichText(data.description)}
         </p>
       )}
