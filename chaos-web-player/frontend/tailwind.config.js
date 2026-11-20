@@ -6,6 +6,21 @@ export default {
   ],
   theme: {
     extend: {
+      // Interlinea: 1.25 su tutta la scala tipografica.
+      // Di default Tailwind porta 1.5 (1.625 per leading-relaxed) e il
+      // ritmo del testo risulta piu largo del design di riferimento
+      // (vedi screenshots/): il blocco di 3 righe di una riga brano deve
+      // stare dentro il quadrato della cover, non superarlo.
+      fontSize: {
+        xs: ["0.75rem", { lineHeight: "0.9375rem" }],
+        sm: ["0.875rem", { lineHeight: "1.09375rem" }],
+        base: ["1rem", { lineHeight: "1.25rem" }],
+        lg: ["1.125rem", { lineHeight: "1.40625rem" }],
+        xl: ["1.25rem", { lineHeight: "1.5625rem" }],
+        "2xl": ["1.5rem", { lineHeight: "1.875rem" }],
+        "3xl": ["1.875rem", { lineHeight: "2.34375rem" }],
+        "4xl": ["2.25rem", { lineHeight: "2.8125rem" }],
+      },
       fontFamily: {
         mono: [
           '"Source Code Pro"',

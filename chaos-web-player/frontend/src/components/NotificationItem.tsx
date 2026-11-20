@@ -62,7 +62,7 @@ export default function NotificationItem({ notification }: NotificationItemProps
       )}
 
       <p
-        className="mt-3 leading-relaxed"
+        className="mt-3 text-sm"
         style={{ color: read ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.7)" }}
       >
         {renderRichText(body)}
