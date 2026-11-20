@@ -78,7 +78,7 @@ export default function TrackListItem({
         type="button"
         onClick={() => onPlay?.(track)}
         aria-label={`Play ${track.title}`}
-        className="h-14 w-14 shrink-0 rounded-sm bg-neutral-800 transition-opacity group-hover:opacity-80 sm:h-16 sm:w-16"
+        className="h-16 w-16 shrink-0 rounded-sm bg-neutral-800 transition-opacity group-hover:opacity-80"
       >
         {coverUrl ? (
           <span className="block h-full w-full overflow-hidden rounded-sm">
@@ -95,11 +95,11 @@ export default function TrackListItem({
       {/* Title / Artist / Year */}
       <div className="min-w-0 flex-1">
         <p className="truncate font-bold">{track.title}</p>
-        <p className="truncate text-sm" style={{ color: "#FF5A1F" }}>
+        <p className="truncate" style={{ color: "#FF5A1F" }}>
           {track.artist}
         </p>
         {track.year && (
-          <p className="text-xs text-white/40">{track.year}</p>
+          <p className="text-sm text-white/40">{track.year}</p>
         )}
       </div>
 

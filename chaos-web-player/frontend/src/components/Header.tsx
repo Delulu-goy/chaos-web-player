@@ -21,7 +21,7 @@ export default function Header({ className = "" }: HeaderProps) {
       </div>
 
       <div
-        className="flex items-center gap-2 text-sm font-medium"
+        className="flex items-center gap-2 text-sm"
         style={{ color: "#FF5A1F" }}
         aria-label="In onda"
       >
