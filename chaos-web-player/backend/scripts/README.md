@@ -124,7 +124,7 @@ parte, lo script pubblica l'edizione e la ripulisce alla scadenza.
   "curator": {
     "name": "DJ Skeleton",
     "role": "Resident Curator",
-    "avatar": null,
+    "avatar": "/api/avatars/curator-24.jpg",
     "links": { "spotify": "https://…", "soundcloud": "https://…" }
   },
   "tracks": ["01 - brano.mp3", "02 - brano.mp3"]
@@ -142,6 +142,12 @@ parte, lo script pubblica l'edizione e la ripulisce alla scadenza.
 
 `links` è un **oggetto** `{spotify: url}` (il formato che il frontend si
 aspetta). Il formato ad array del vecchio seed faceva crashare `CuratorCard`.
+
+L'avatar del curatore è un **file** in `private/avatars/curator-<ed>.<ext>`,
+servito dalla rotta **pubblica** `GET /api/avatars/:file`. Nel manifest si
+mette la URL **relativa** (`/api/avatars/curator-24.jpg`): non un path locale
+(non lo saprebbe risolvere il browser) e non una data-URI (il campo è
+`VARCHAR(191)` e finisce in un `<img src>`).
 
 Se il campo **`tracks` è omesso** dal manifest, la lista dei brani viene
 **derivata dalla cartella** (ordine alfabetico = ordine curato con il
@@ -175,11 +181,17 @@ Per ogni edizione con `endsAt <= now`:
 2. `ensureInside(PIRATE_DAY_DIR, filePath)` poi `fs.unlink` (`ENOENT` ignorato);
 3. unlink del file waveform `private/waveforms/waveform-<id>.txt` (l'unico
    derivato che nessuno pulisce: le cover le pulisce già `scan.js`);
-4. **solo se tutti gli unlink sono andati a buon fine** → delete delle righe
-   `tracks` (cascade su `playlist_items` e `favorites`) e delete della riga
-   `playlists` dell'edizione;
-5. se un unlink fallisce: log + skip dell'edizione + exit code 1 → il giro
-   successivo ritenta.
+4. unlink dell'**avatar del curatore** `private/avatars/curator-<ed>.<ext>`
+   (il nome arriva da `playlists.curator_avatar`: si prende l'ultimo
+   segmento della URL e si verifica che rispetti il pattern
+   `curator-<n>.<ext>`, quindi non si cancella mai un file fuori da quella
+   directory; se la cancellazione fallisce è solo un warning, non blocca
+   l'edizione);
+5. **solo se tutti gli unlink dei brani sono andati a buon fine** → delete
+   delle righe `tracks` (cascade su `playlist_items` e `favorites`) e delete
+   della riga `playlists` dell'edizione;
+6. se un unlink di un brano fallisce: log + skip dell'edizione + exit code 1
+   → il giro successivo ritenta.
 
 L'ordine **file prima, DB dopo** è deliberato: cancellando prima il DB, un
 file rimasto su disco verrebbe re-inserito dallo scanner come track orfano
@@ -196,6 +208,7 @@ cleanup (i suoi file sono quelli dell'edizione in arrivo).
 | `PIRATE_DAY_MANIFEST` | `manifest.json` | relativo a `PIRATE_DAY_DIR` |
 | `PIRATE_DAY_WINDOW_HOURS` | `24` | durata della finestra (se il manifest non dice `durationHours`) |
 | `PIRATE_DAY_KEEP_FILES` | — | se `1` la fase B non cancella i file (solo DB): debug |
+| `AVATARS_DIR` | `private/avatars` | cartella degli avatar del curatore: deve coincidere con quella dell'app (`AVATARS_DIR` nel pannello), altrimenti il cleanup cancella un file diverso da quello servito |
 
 **Exit code**: `0` — tutto ok; `1` — manifest irrecuperabile o unlink fallito.
 
@@ -432,10 +445,17 @@ I check coprono il contratto di tutti gli endpoint, gli invarianti I1/I3 del Pir
 | 33 | Item show list → `favoriteable ≠ false` | Contratto |
 | 34 | `POST /api/favorites/<track pirate day>` → 403 | Sicurezza |
 | 35 | `GET /api/favorites` senza track pirate day | Contratto |
+| 36 | `GET /api/avatars/<inesistente>` → 404 `avatar_not_found` | Contratto |
+| 37 | `GET /api/avatars/<path traversal>` → 404 `avatar_not_found` | Sicurezza |
+| 38 | `GET /api/avatars/<avatar dell'edizione>` → 200 immagine (se l'edizione attiva ne ha uno) | Contratto |
 
 I check 30-35 sono **saltati** (non falliti) quando non c'è un'edizione
 Pirate Day attiva: il `○` nel log indica uno skip, e il riepilogo li conta
 separatamente (`N skipped`). Uno skip non fa uscire con codice 1.
+
+Il check 38 è saltato quando l'edizione attiva non ha un avatar impostato
+(`curator.avatar` vuoto): è la situazione normale fino alla prima edizione
+con l'avatar caricato.
 
 > **Rate limit**: in produzione `/auth/*` accetta 5 richieste ogni 15 minuti
 > per IP e lo smoke test ne fa 7 → i check che lo toccano diventano skip e

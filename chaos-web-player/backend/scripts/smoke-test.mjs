@@ -773,6 +773,52 @@ async function run() {
     }
   }
 
+  // ── 27. Avatar del curatore: rotta pubblica + no path traversal ────
+  //
+  // La rotta serve i file in `private/avatars/`. Anche senza edizione
+  // attiva deve rispondere 404 con `avatar_not_found` (e non il
+  // catch-all `not_found` dell'API): è il segnale che la rotta è montata.
+  {
+    const missing = await http("GET", "/api/avatars/curator-999999.png");
+    record(
+      "GET /api/avatars/<inesistente> → 404 avatar_not_found",
+      missing.status === 404 && missing.json?.error === "avatar_not_found",
+      `status=${missing.status}, error=${missing.json?.error ?? "n/a"}`,
+    );
+
+    // Path traversal: il nome viene filtrato dalla whitelist, quindi
+    // nessun file fuori dalla directory degli avatar può essere servito.
+    // (%2f non viene decodificato nella normalizzazione del path, quindi
+    // la richiesta resta sotto /api/avatars/ e non viene risolta altrove.)
+    const traversal = await http(
+      "GET",
+      "/api/avatars/..%2f..%2fetc%2fpasswd",
+    );
+    record(
+      "GET /api/avatars/<path traversal> → 404 avatar_not_found",
+      traversal.status === 404 && traversal.json?.error === "avatar_not_found",
+      `status=${traversal.status}, error=${traversal.json?.error ?? "n/a"}`,
+    );
+
+    // Se l'edizione attiva ha un avatar, deve essere servito come immagine.
+    const prefix = "/api/avatars/";
+    const avatarUrl = pirateDay?.curator?.avatar;
+    if (typeof avatarUrl === "string" && avatarUrl.startsWith(prefix)) {
+      const file = avatarUrl.slice(prefix.length);
+      const r = await http("GET", `${prefix}${file}`, { raw: true });
+      record(
+        `GET /api/avatars/${file} → 200 (immagine)`,
+        r.status === 200 && r.bytes > 0,
+        `status=${r.status}, bytes=${r.bytes}`,
+      );
+    } else {
+      skip(
+        "GET /api/avatars/<avatar dell'edizione> → 200",
+        "nessun avatar impostato",
+      );
+    }
+  }
+
   // ── Summary ────────────────────────────────────────────────────────
   const failed = results.filter((r) => !r.ok).length;
   const skippedCount = results.filter((r) => r.skipped).length;

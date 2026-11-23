@@ -94,6 +94,7 @@ Base: `/api`. Tutti richiedono autenticazione (cookie `token` httpOnly) tranne:
 - `POST /api/auth/login`
 - `GET /api/health` (pubblico: stato del processo)
 - `GET /api/debug` (pubblico: processo, env check, `git.sha`, strumenti di sistema)
+- `GET /api/avatars/:file` (pubblico: avatar del curatore del Pirate Day)
 
 > `GET /api/debug` espone anche `DB_HOST`, `DB_USER`, `DB_NAME` e la
 > **lunghezza** del JWT secret (non il valore). È una diagnostica utile
@@ -156,6 +157,34 @@ GET /api/playlists/pirate-day      (auth) → 200 { title, curator, description,
 
 La show list **non** contiene mai i brani del Pirate Day (filtro per path
 **e** per dati).
+
+### Avatars
+
+```
+GET /api/avatars/:file              (pubblico) → 200 image/* | 404 { error: "avatar_not_found" }
+```
+
+L'avatar del curatore è un **file** in `private/avatars/`, non una colonna
+del DB (vedi `src/lib/avatarStore.js`): il path è derivato dal nome, che
+segue il pattern `curator-<edizione>.<ext>`.
+
+- **Rotta pubblica**: un avatar non è un dato riservato e deve caricare in
+  un `<img>` anche senza sessione valida.
+- **Whitelist sul nome**: `isValidAvatarName` accetta solo
+  `curator-<numero>.<png|jpg|jpeg|webp|avif>` → niente slash, niente `..`,
+  niente path traversal.
+- **404 distintivo**: `avatar_not_found` (≠ il `not_found` del catch-all
+  `/api`) dice se la rotta è montata ma il file manca.
+- **Cache**: `public, max-age=86400`. Il nome cambia a ogni edizione, quindi
+  un giorno di cache non lascia a schermo l'avatar precedente.
+- Il frontend ci mette dentro la URL **relativa** (`/api/avatars/curator-25.jpg`):
+  risolta sull'origin, in dev passa dal proxy Vite `/api`.
+
+Il cleanup del Pirate Day (`scripts/pirate-day.js`) cancella l'avatar
+dell'edizione scaduta insieme ai brani.
+
+Env: `AVATARS_DIR` (default `private/avatars`; in produzione path assoluto,
+uguale per l'app e per i cron).
 
 ### Notifications
 
@@ -237,6 +266,7 @@ backend/
 │   │   ├── paths.js         # percorsi condivisi (PIRATE_DAY_DIR, isPathInside)
 │   │   ├── notifications.js # creazione notifiche condivisa da API e script (createNotification, notifyNewTracks, notifyPirateDay)
 │   │   ├── pirateDay.js     # predicati Pirate Day: pirateDayTrackIds, isPirateDayPath, isFavoriteable, toTrackDto
+│   │   ├── avatarStore.js   # path dei file avatar del curatore (nessuna colonna nel DB)
 │   │   ├── deployInfo.js    # SHA del commit in esecuzione (env DEPLOY_SHA, git, o lettura di .git/HEAD)
 │   │   └── waveformStore.js # path dei file di waveform (nessuna colonna nel DB)
 │   ├── middleware/
@@ -249,7 +279,8 @@ backend/
 │       ├── tracks.routes.js
 │       ├── favorites.routes.js
 │       ├── playlists.routes.js
-│       └── notifications.routes.js
+│       ├── notifications.routes.js
+│       └── avatars.routes.js  # rotta PUBBLICA: avatar del curatore (private/avatars/)
 └── scripts/
     ├── _shared.mjs            # env loader (dotenv), prisma factory, helpers
     ├── lib/                   # moduli condivisi dagli script (prisma, audioScan, curator)

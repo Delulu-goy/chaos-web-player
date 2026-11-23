@@ -10,7 +10,8 @@
 //
 //   FASE B — CLEANUP
 //     Per ogni edizione scaduta (endsAt <= now) cancella i FILE di
-//     quell'edizione (non tutta la cartella!) e poi le righe del DB.
+//     quell'edizione (non tutta la cartella!), l'avatar del curatore e
+//     poi le righe del DB.
 //
 // L'ordine è FILE PRIMA, DB DOPO: se cancellassimo prima il DB, un file
 // rimasto su disco verrebbe re-inserito dallo scanner come track orfano
@@ -29,6 +30,7 @@
 //   PIRATE_DAY_MANIFEST     - default: "manifest.json" (relativo a PIRATE_DAY_DIR)
 //   PIRATE_DAY_WINDOW_HOURS - default: 24 (durata della finestra)
 //   PIRATE_DAY_KEEP_FILES   - se "1" la fase B NON cancella i file (solo DB): debug
+//   AVATARS_DIR             - default: "<cwd>/private/avatars" (avatar del curatore)
 //
 // Le credenziali DB sono lette da backend/.env (DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME).
 
@@ -43,6 +45,7 @@ import {
 } from "./_shared.mjs";
 import { makePrisma } from "./lib/prisma.mjs";
 import { waveformFileFor } from "../src/lib/waveformStore.js";
+import { avatarFileFor, isValidAvatarName } from "../src/lib/avatarStore.js";
 import { pirateDayDir } from "../src/lib/paths.js";
 import { notifyPirateDay } from "../src/lib/notifications.js";
 import { normalizeCuratorLinks } from "./lib/curator.mjs";
@@ -375,6 +378,29 @@ function unlinkIfExists(filePath) {
 }
 
 /**
+ * Cancella il file avatar citato nella URL del curatore.
+ *
+ * La URL può essere relativa (`/api/avatars/curator-24.jpg`) o assoluta
+ * (`https://radio.chaosroom.online/api/avatars/curator-24.jpg`): in
+ * entrambi i casi il nome del file è l'ultimo segmento. Il pattern viene
+ * verificato: una URL che non punta a un avatar nostro viene ignorata
+ * (non si cancella mai un file fuori da AVATARS_DIR).
+ *
+ * Non blocca il cleanup: un avatar rimasto è un file in più, non un dato
+ * perso. L'edizione resta comunque valida senza avatar.
+ */
+function removeAvatar(avatarUrl) {
+  if (!avatarUrl) return;
+  const name = path.basename(String(avatarUrl).split("?")[0]);
+  if (!isValidAvatarName(name)) return;
+  try {
+    unlinkIfExists(avatarFileFor(name));
+  } catch (err) {
+    logger.warn(`  ⚠ avatar non cancellato (${name}): ${err.message ?? err}`);
+  }
+}
+
+/**
  * Fase B: rimuove file e righe delle edizioni scadute.
  * @param {string|null} reservedSlug edizione riservata dal manifest: non
  *   viene ripulita (i suoi file sono quelli dell'edizione in arrivo).
@@ -437,6 +463,10 @@ async function cleanupPhase(prisma, now, reservedSlug) {
       );
       continue;
     }
+
+    // L'avatar del curatore è un file derivato come le waveform: quando
+    // l'edizione scade, sparisce anche lui.
+    removeAvatar(edition.curatorAvatar);
 
     // File prima, DB dopo: solo ora le righe canellano (cascade su
     // playlist_items e favorites).

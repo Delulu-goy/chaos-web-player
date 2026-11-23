@@ -417,13 +417,20 @@ backend/private/
 │       ├── 01 - brano.mp3
 │       └── _archive/               # opzionale: manifest-<edition>.json
 ├── covers/                         # cover-<hash>.jpg
-└── waveforms/                      # waveform-<trackId>.txt
+├── waveforms/                      # waveform-<trackId>.txt
+└── avatars/                        # curator-<edition>.<ext> (avatar del curatore)
 ```
 
 > ⚠️ **La cartella `pirate-day/` DEVE stare dentro `private/audio/`.**
 > Fuori, `scan.js` la tratterebbe come track orfani e cancellerebbe i brani
 > ogni 5 minuti (`scan.js` elimina ogni track il cui file non è più in
 > `MUSIC_DIR`), e le waveform non verrebbero mai calcolate.
+
+L'avatar del curatore sta in `private/avatars/` ed è servito dalla rotta
+**pubblica** `GET /api/avatars/:file` (whitelist sul nome:
+`curator-<edition>.<png|jpg|jpeg|webp|avif>`). Nel manifest si mette la URL
+relativa `/api/avatars/curator-25.jpg`. La cartella va creata a mano sul
+server (o con `mkdir -p`): non è nel `.cpanel.yml`.
 
 ## STEP 1 — Creare il manifest
 

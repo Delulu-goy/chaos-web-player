@@ -22,6 +22,7 @@ import tracksRoutes from "./routes/tracks.routes.js";
 import favoritesRoutes from "./routes/favorites.routes.js";
 import playlistsRoutes from "./routes/playlists.routes.js";
 import notificationsRoutes from "./routes/notifications.routes.js";
+import avatarsRoutes from "./routes/avatars.routes.js";
 
 const app = express();
 const PORT = parseInt(process.env.PORT ?? "3001", 10);
@@ -111,6 +112,11 @@ app.use("/api/tracks", tracksRoutes);
 app.use("/api/favorites", favoritesRoutes);
 app.use("/api/playlists", playlistsRoutes);
 app.use("/api/notifications", notificationsRoutes);
+
+// Avatar del curatore (Pirate Day) — rotta PUBBLICA.
+// Va montata prima del catch-all /api: serve i file in private/avatars/
+// con una whitelist stretta sul nome (curator-<edizione>.<ext>).
+app.use("/api/avatars", avatarsRoutes);
 
 // 404 per qualsiasi altro /api/*
 app.use("/api", (req, res) => {

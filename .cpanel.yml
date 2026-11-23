@@ -46,6 +46,7 @@ deployment:
     - mkdir -p $SOURCE_ROOT/backend/private/audio
     - mkdir -p $SOURCE_ROOT/backend/private/covers
     - mkdir -p $SOURCE_ROOT/backend/private/waveforms
+    - mkdir -p $SOURCE_ROOT/backend/private/avatars
     - mkdir -p $SOURCE_ROOT/backend/logs
 
     # ── Frontend (dist committato, non ricostruito) ──────────────────
