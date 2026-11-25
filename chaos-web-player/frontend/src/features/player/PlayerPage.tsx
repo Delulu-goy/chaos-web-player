@@ -24,6 +24,7 @@ import LoadingView from "../../components/ui/LoadingView";
 import EmptyState from "../../components/ui/EmptyState";
 import FavoriteButton from "../../components/FavoriteButton";
 import TrackListItem from "../../components/TrackListItem";
+import CoverCarousel from "../../components/CoverCarousel";
 import Waveform from "../../components/Waveform";
 import { usePlayerStore } from "../../store/playerStore";
 import type { QueueSource } from "../../store/playerStore";
@@ -32,7 +33,6 @@ import { api, ApiError } from "../../lib/api";
 import { formatTime } from "../../lib/format";
 import { useTrackWaveform } from "../../hooks/useTrackWaveform";
 import { seekAudio } from "../../audio/useAudioEngine";
-import { trackCoverUrl } from "../../lib/media";
 import type { ShowListResponse, Track } from "../../types/api";
 
 // Barre decorative di fallback: usate solo quando il brano non ha ancora
@@ -183,18 +183,30 @@ export default function PlayerPage() {
     );
   }
 
-  const coverUrl = effectiveTrack.coverPath
-    ? trackCoverUrl(effectiveTrack.id)
-    : null;
   const duration = effectiveTrack.durationSeconds ?? 0;
   const currentSeconds = progress * duration;
   // (queueIndex logica gestita dentro useAudioEngine)
+
+  // Copertine adiacenti (stile iTunes): si prendono dalla coda EFFETTIVA,
+  // la stessa che governa i bottoni skip. Se la coda dello store è vuota i
+  // bottoni non farebbero nulla: meglio non mostrare copertine laterali
+  // che non si possono raggiungere.
+  const currentIndex = effectiveQueue.findIndex(
+    (t) => t.id === effectiveTrack.id,
+  );
+  const prevTrack =
+    queue.length > 0 && currentIndex > 0 ? effectiveQueue[currentIndex - 1] : null;
+  const nextTrack =
+    queue.length > 0 && currentIndex >= 0 && currentIndex < effectiveQueue.length - 1
+      ? effectiveQueue[currentIndex + 1]
+      : null;
 
   return (
     <AppShell activeTab="player" onTabChange={onTabChange} hasNotifications={unread > 0}>
       <PlayerView
         track={effectiveTrack}
-        coverUrl={coverUrl}
+        prevTrack={prevTrack}
+        nextTrack={nextTrack}
         queue={effectiveQueue}
         showFavorite={showFavorite}
         isPlaying={isPlaying}
@@ -224,7 +236,10 @@ export default function PlayerPage() {
 
 interface PlayerViewProps {
   track: Track;
-  coverUrl: string | null;
+  /** Brano precedente nella coda: copertina di sinistra (null se non c'è). */
+  prevTrack: Track | null;
+  /** Brano successivo nella coda: copertina di destra (null se non c'è). */
+  nextTrack: Track | null;
   queue: Track[];
   /** False quando la coda è quella del pirate day: niente cuore preferiti. */
   showFavorite: boolean;
@@ -245,7 +260,8 @@ interface PlayerViewProps {
 
 function PlayerView({
   track,
-  coverUrl,
+  prevTrack,
+  nextTrack,
   queue,
   showFavorite,
   isPlaying,
@@ -266,16 +282,14 @@ function PlayerView({
 
   return (
     <>
-      {/* Cover art */}
-      <div className="aspect-square w-full overflow-hidden rounded-sm bg-neutral-900">
-        {coverUrl ? (
-          <img
-            src={coverUrl}
-            alt={track.title}
-            className="h-full w-full object-cover"
-          />
-        ) : null}
-      </div>
+      {/* Cover art — stack con la copertina precedente e successiva
+          (stile "album view" di iTunes per Mac). */}
+      <CoverCarousel
+        current={track}
+        prev={prevTrack}
+        next={nextTrack}
+        onSelect={onPlay}
+      />
 
       {/* Title row */}
       <div className="mt-6 flex items-start justify-between gap-4 border-t border-white/10 pt-5">

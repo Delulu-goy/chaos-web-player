@@ -94,6 +94,26 @@
   }
 }
 
+@layer components {
+  /* Stack copertine del player (CoverCarousel): transizione dello
+     scorrimento. La durata (450ms) deve combaciare con SLIDE_MS in
+     components/CoverCarousel.tsx. */
+  .cover-layer {
+    transition:
+      transform 450ms cubic-bezier(0.22, 0.61, 0.36, 1),
+      opacity 450ms linear;
+    will-change: transform, opacity;
+  }
+
+  /* Copertina appena entrata nello stack: compare in dissolvenza.
+     Il keyframe dichiara solo il valore iniziale: quello finale è
+     l'opacità inline della copertina (le animazioni CSS hanno la
+     precedenza sullo stile inline durante l'animazione). */
+  .cover-fade-in {
+    animation: cover-fade-in 300ms ease-out;
+  }
+}
+
 @keyframes spin-slow {
   from {
     transform: rotate(0deg);
@@ -103,8 +123,22 @@
   }
 }
 
+@keyframes cover-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-spin-slow {
+    animation: none;
+  }
+
+  /* Niente scorrimento: le copertine cambiano di colpo. */
+  .cover-layer {
+    transition: none;
+  }
+  .cover-fade-in {
     animation: none;
   }
 }
