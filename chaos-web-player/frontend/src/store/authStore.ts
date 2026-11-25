@@ -3,6 +3,7 @@
 
 import { create } from "zustand";
 import { api, ApiError, AUTH_EXPIRED_EVENT } from "../lib/api";
+import { stopPlayback } from "../audio/useAudioEngine";
 import { toast } from "./toastStore";
 import type { AuthResponse, User } from "../types/api";
 
@@ -35,6 +36,9 @@ if (typeof window !== "undefined" && !(window as { __chaosAuthExpiredBound?: boo
   window.addEventListener(AUTH_EXPIRED_EVENT, () => {
     const state = useAuthStore.getState();
     if (state.user) {
+      // La sessione è morta lato server: la riproduzione va interrotta
+      // esattamente come in un logout esplicito.
+      stopPlayback();
       // Logout silenzioso (non serve un altro POST /auth/logout: il cookie è già
       // morto lato server se il 401 è tornato). Pulisci comunque lo store.
       useAuthStore.setState({ user: null, error: null });
@@ -124,6 +128,11 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
+    // Prima di tutto: ferma la riproduzione e svuota il player.
+    // L'elemento <audio> è un singleton montato a livello app e
+    // sopravvive al cambio pagina: senza questo teardown il brano
+    // continuerebbe a suonare anche sulla pagina di login.
+    stopPlayback();
     try {
       await api.post("/auth/logout");
     } catch {

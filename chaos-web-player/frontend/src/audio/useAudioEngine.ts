@@ -61,6 +61,10 @@ export function useAudioEngine() {
   const queue = usePlayerStore((s) => s.queue);
   const queueIndex = usePlayerStore((s) => s.queueIndex);
 
+  // C'è un brano selezionato? Serve alla Media Session: senza brano lo
+  // stato è "none" (nessun controllo attivo), non "paused".
+  const hasTrack = currentTrack !== null;
+
   // Singleton audio element
   const audio = useSingletonAudio();
 
@@ -220,8 +224,18 @@ export function useAudioEngine() {
 
   // ── Media Session API (controlli lock screen / notification) ───────────
   useEffect(() => {
-    if (!currentTrack) return;
     if (!("mediaSession" in navigator)) return;
+
+    // Nessun brano (reset dopo logout, sessione scaduta): la notifica del
+    // lock screen non deve più mostrare il brano precedente.
+    if (!currentTrack) {
+      try {
+        navigator.mediaSession.metadata = null;
+      } catch {
+        // Browser senza supporto: si prosegue.
+      }
+      return;
+    }
 
     // setActionHandler lancia NotSupportedError per le azioni che il
     // browser non implementa (Safari non supporta "seekto"). Senza il
@@ -274,8 +288,18 @@ export function useAudioEngine() {
   // riparte. Dichiarare lo stato tiene la sessione viva.
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
-    navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
-  }, [isPlaying]);
+    // Senza brano non c'è una sessione attiva: "none" stacca i controlli
+    // invece di lasciarli su "paused" (che implica ancora un brano in pausa).
+    try {
+      navigator.mediaSession.playbackState = !hasTrack
+        ? "none"
+        : isPlaying
+          ? "playing"
+          : "paused";
+    } catch {
+      // playbackState non supportato: si prosegue.
+    }
+  }, [isPlaying, hasTrack]);
 
   // ── Media Session: posizione nella timeline ───────────────────────────
   // Con positionState il browser sa quanto è lungo il brano e a che punto
@@ -334,6 +358,9 @@ function useSingletonAudio(): HTMLAudioElement | null {
       usePlayerStore.getState().setPlaying(false);
     };
     const onError = () => {
+      // Errore durante il teardown (logout, sessione scaduta): non c'è più
+      // nessun brano in riproduzione, quindi non è un errore da mostrare.
+      if (!usePlayerStore.getState().currentTrack) return;
       // Errore riproduzione (rete, formato non supportato, 401, 404, ecc.)
       usePlayerStore.getState().setPlaying(false);
       // Messaggio specifico per errori di rete
@@ -370,6 +397,49 @@ function ensureAudioElement(): HTMLAudioElement {
   // del backend in produzione, proxy Vite in dev): impostarlo metterebbe
   // l'elemento in CORS mode senza alcun vantaggio e complica il caching.
   return audioEl;
+}
+
+/**
+ * Ferma TUTTO: riproduzione, sessione multimediale e stato del player.
+ *
+ * Va chiamata quando termina la sessione utente (logout, sessione
+ * scaduta). L'elemento <audio> è un singleton montato a livello app
+ * (App.tsx), quindi sopravvive al cambio pagina: senza questo teardown il
+ * brano continua a suonare anche sulla pagina di login, e la coda
+ * dell'utente precedente resta nel localStorage del dispositivo.
+ */
+export function stopPlayback() {
+  // Usa l'elemento solo se esiste già: non ha senso crearne uno (e quindi
+  // aprire una connessione media) per fermare una riproduzione inesistente.
+  const audio = audioEl;
+  if (audio) {
+    // Ferma il suono e libera la risorsa: `load()` senza sorgente aborta
+    // l'eventuale download in corso e azzera il readyState (così l'evento
+    // `pause` conseguente viene ignorato dai listener, che leggono
+    // readyState === HAVE_NOTHING).
+    try {
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+    } catch {
+      // L'elemento potrebbe essere già stato liberato: si prosegue.
+    }
+  }
+
+  // La Media Session è la stessa del lock screen: senza questo reset il
+  // brano precedente resta in evidenza con i suoi controlli attivi.
+  if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
+    try {
+      navigator.mediaSession.metadata = null;
+      navigator.mediaSession.playbackState = "none";
+    } catch {
+      // Browser senza supporto: si prosegue.
+    }
+  }
+
+  // Svuota traccia corrente, coda e posizione (e li rimuove dal
+  // localStorage grazie al middleware `persist`).
+  usePlayerStore.getState().reset();
 }
 
 // ── Seek throttled ───────────────────────────────────────────────────────
